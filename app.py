@@ -5,35 +5,44 @@ import pandas as pd
 st.set_page_config(page_title="Neat Intelligence Dashboard", layout="wide", page_icon="🏢")
 
 # ==========================================
-# CUSTOM CSS: CHUNKY FONTS & SMOOTH BORDERS
+# FORCED DARK MODE & CHUNKY STYLE
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. Make all Headings Bolder and Chunkier */
+    /* Force white text globally for readability */
+    html, body, [class*="ViewContainer"] {
+        color: #f0f2f6 !important;
+    }
+
+    /* Bolder Headings */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Arial Black', 'Impact', sans-serif !important;
         font-weight: 900 !important;
-        letter-spacing: -0.05em;
+        color: #ffffff !important;
+        text-transform: uppercase;
     }
 
-    /* 2. Style the Metric Scorecards with Smooth Borders */
+    /* Metric Cards Styling */
     [data-testid="stMetric"] {
-        border: 2px solid #404452;
-        border-radius: 12px;
-        padding: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        background-color: #2d303a !important;
+        border: 2px solid #9c27b0 !important; /* Purple Border */
+        border-radius: 15px !important;
+        padding: 15px !important;
     }
-    
-    /* 3. Chunky Metric Numbers */
+
     [data-testid="stMetricValue"] {
         font-weight: 900 !important;
-        font-size: 2.2rem !important;
+        color: #ffffff !important;
+    }
+
+    /* Make the Sidebar Darker */
+    [data-testid="stSidebar"] {
+        background-color: #1a1c23 !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🏢 Neat Room Intelligence")
-st.markdown("Live environmental telemetry and occupancy tracking.")
 
 # Your real CSV link
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
@@ -65,18 +74,13 @@ def get_smart_status(row):
         return "🟢 AVAILABLE"
 
 try:
-    with st.spinner('Pulling live telemetry...'):
+    with st.spinner('Accessing secure data...'):
         df = load_data(SHEET_URL)
 
     if not df.empty:
-        main_tab1, main_tab2 = st.tabs(["🌐 Fleet Overview (Live)", "🔍 Room Deep Dive (History)"])
+        main_tab1, main_tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
 
-        # ==========================================
-        # TAB 1: FLEET OVERVIEW
-        # ==========================================
         with main_tab1:
-            st.subheader("Live Room Status")
-            
             latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             display_df = latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']]
@@ -85,99 +89,62 @@ try:
                 st.dataframe(
                     display_df,
                     column_config={
-                        "Room": st.column_config.TextColumn("Room Name", width="medium"),
-                        "Live Status": st.column_config.TextColumn("Live Status", width="medium"),
-                        "Temperature": st.column_config.NumberColumn("Temp (°C)", format="%.1f"),
+                        "Room": st.column_config.TextColumn("Room Name"),
+                        "Live Status": st.column_config.TextColumn("Live Status"),
+                        "Temperature": st.column_config.NumberColumn("Temp °C", format="%.1f"),
                         "Humidity": st.column_config.ProgressColumn("Humidity", format="%f%%", min_value=0, max_value=100),
-                        "VOC Index": st.column_config.NumberColumn("Air Quality (VOC)", format="%d"),
+                        "VOC Index": st.column_config.NumberColumn("VOC Index", format="%d"),
                         "Light": st.column_config.NumberColumn("Light (lux)", format="%d"),
-                        "People": st.column_config.NumberColumn("People Count", format="%d"),
+                        "People": st.column_config.NumberColumn("Occupancy", format="%d"),
                     },
                     hide_index=True,
                     use_container_width=True,
                 )
 
-        # ==========================================
-        # TAB 2: THE HISTORICAL DEEP DIVE
-        # ==========================================
         with main_tab2:
             room_list = sorted(df['Room'].dropna().unique().tolist())
-            
-            with st.container(border=True):
-                selected_room = st.selectbox("Select a room to investigate:", room_list)
-            
+            selected_room = st.selectbox("CHOOSE A ROOM:", room_list)
             filtered_df = df[df['Room'] == selected_room]
 
             if not filtered_df.empty:
                 latest = filtered_df.iloc[-1]
-                
                 st.divider()
                 
-                # Metrics 
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Temperature", f"{latest['Temperature']:.1f} °C" if pd.notna(latest['Temperature']) else "N/A")
-                c2.metric("Humidity", f"{latest['Humidity']:.1f} %" if pd.notna(latest['Humidity']) else "N/A")
-                
-                voc = latest['VOC Index']
-                if pd.notna(voc):
-                    c3.metric("Air Quality (VOC)", f"{voc:.0f}", delta="Poor Air" if voc > 150 else "Good", delta_color="inverse" if voc > 150 else "normal")
-                else:
-                    c3.metric("Air Quality (VOC)", "N/A")
-                    
-                c4.metric("Light Level", f"{latest['Light']:.0f} lux" if pd.notna(latest['Light']) else "N/A")
+                c1.metric("TEMP", f"{latest['Temperature']:.1f} °C")
+                c2.metric("HUMIDITY", f"{latest['Humidity']:.1f} %")
+                c3.metric("VOC INDEX", f"{latest['VOC Index']:.0f}")
+                c4.metric("LIGHT", f"{latest['Light']:.0f} lux")
 
                 st.divider()
 
-                # --- CHARTS (NOW IN SHADES OF PURPLE) ---
+                # Purple Charts
                 chart_col1, chart_col2 = st.columns(2)
-                
                 with chart_col1:
                     with st.container(border=True):
-                        st.markdown("#### 🌡️ Temperature (°C)")
-                        temp_df = filtered_df.dropna(subset=['Temperature']).set_index("Timestamp")["Temperature"]
-                        if not temp_df.empty:
-                            st.line_chart(temp_df, color="#b388ff") # Light Purple
-                            
+                        st.markdown("#### TEMPERATURE")
+                        st.line_chart(filtered_df.set_index("Timestamp")["Temperature"], color="#b388ff")
                 with chart_col2:
                     with st.container(border=True):
-                        st.markdown("#### 💧 Humidity (%)")
-                        hum_df = filtered_df.dropna(subset=['Humidity']).set_index("Timestamp")["Humidity"]
-                        if not hum_df.empty:
-                            st.line_chart(hum_df, color="#7c4dff") # Medium Purple
+                        st.markdown("#### HUMIDITY")
+                        st.line_chart(filtered_df.set_index("Timestamp")["Humidity"], color="#7c4dff")
 
                 chart_col3, chart_col4 = st.columns(2)
-                
                 with chart_col3:
                     with st.container(border=True):
-                        st.markdown("#### 🌬️ Air Quality (VOC Index)")
-                        voc_df = filtered_df.dropna(subset=['VOC Index']).set_index("Timestamp")["VOC Index"]
-                        if not voc_df.empty:
-                            st.line_chart(voc_df, color="#651fff") # Bright Purple
-                        else:
-                            st.info("No VOC data recorded yet.")
-                            
+                        st.markdown("#### AIR QUALITY")
+                        st.line_chart(filtered_df.set_index("Timestamp")["VOC Index"], color="#651fff")
                 with chart_col4:
                     with st.container(border=True):
-                        st.markdown("#### 💡 Light Levels (lux)")
-                        light_df = filtered_df.dropna(subset=['Light']).set_index("Timestamp")["Light"]
-                        if not light_df.empty:
-                            st.area_chart(light_df, color="#e040fb") # Neon Magenta/Purple
-                        else:
-                            st.info("No light data recorded yet.")
+                        st.markdown("#### LIGHT LEVEL")
+                        st.area_chart(filtered_df.set_index("Timestamp")["Light"], color="#e040fb")
                 
                 with st.container(border=True):
-                    st.markdown("#### 👥 Occupancy Trends (People Count)")
-                    ppl_df = filtered_df.dropna(subset=['People']).set_index("Timestamp")["People"]
-                    if not ppl_df.empty:
-                        st.area_chart(ppl_df, color="#aa00ff") # Deep Chunky Purple
-                    else:
-                        st.info("No occupancy data recorded yet.")
-
-            else:
-                st.warning("No historical data found for this room.")
+                    st.markdown("#### LIVE OCCUPANCY HISTORY")
+                    st.area_chart(filtered_df.set_index("Timestamp")["People"], color="#aa00ff")
 
     else:
-        st.warning("No data found in the spreadsheet yet.")
+        st.warning("Awaiting initial data stream...")
 
 except Exception as e:
-    st.error(f"Uh oh! Couldn't load the data. (Error: {e})")
+    st.error(f"SYSTEM ERROR: {e}")
