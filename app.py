@@ -65,21 +65,23 @@ try:
             with c_room:
                 selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
             with c_grain:
-                # --- THE NEW TIME GRAIN SELECTOR ---
                 grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg", "Weekly Avg"])
             
-            # Map user-friendly text to Pandas offset aliases
             grain_map = {"Minutes (Raw)": None, "Hourly Avg": "H", "Daily Avg": "D", "Weekly Avg": "W"}
             resample_rule = grain_map[grain]
 
             filtered_df = df[df['Room'] == selected_room].copy()
             filtered_df = filtered_df.set_index("Timestamp")
 
-            # Apply resampling if a summary is selected
+            # --- THE FIX IS HERE ---
+            # Define which columns are actually numbers so we don't try to average "Status"
+            num_cols = ["Temperature", "Humidity", "People", "VOC Index", "Light"]
+
             if resample_rule:
-                chart_df = filtered_df.resample(resample_rule).mean()
+                # Only resample the numeric columns to prevent the 'str' error
+                chart_df = filtered_df[num_cols].resample(resample_rule).mean()
             else:
-                chart_df = filtered_df
+                chart_df = filtered_df[num_cols]
 
             if not filtered_df.empty:
                 latest = filtered_df.iloc[-1]
@@ -93,31 +95,34 @@ try:
 
                 st.divider()
 
-                # Purple Charts using the resampled chart_df
-                row1_1, row1_2 = st.columns(2)
-                with row1_1:
+                # Charts
+                r1_1, r1_2 = st.columns(2)
+                with r1_1:
                     with st.container(border=True):
                         st.markdown("#### TEMPERATURE")
                         st.line_chart(chart_df["Temperature"], color="#b388ff")
-                with row1_2:
+                with r1_2:
                     with st.container(border=True):
                         st.markdown("#### HUMIDITY")
                         st.line_chart(chart_df["Humidity"], color="#7c4dff")
 
-                row2_1, row2_2 = st.columns(2)
-                with row2_1:
+                r2_1, r2_2 = st.columns(2)
+                with r2_1:
                     with st.container(border=True):
                         st.markdown("#### AIR QUALITY")
                         st.line_chart(chart_df["VOC Index"], color="#651fff")
-                with row2_2:
+                with r2_2:
                     with st.container(border=True):
                         st.markdown("#### LIGHT LEVEL")
                         st.area_chart(chart_df["Light"], color="#e040fb")
                 
                 with st.container(border=True):
                     st.markdown("#### OCCUPANCY HISTORY")
-                    # For people, we use 'max' instead of 'mean' for better insight during resampling
-                    occ_data = filtered_df["People"].resample(resample_rule).max() if resample_rule else filtered_df["People"]
+                    # For people, we use 'max' to see the peak occupancy in that time window
+                    if resample_rule:
+                        occ_data = filtered_df["People"].resample(resample_rule).max()
+                    else:
+                        occ_data = filtered_df["People"]
                     st.area_chart(occ_data, color="#aa00ff")
 
     else:
