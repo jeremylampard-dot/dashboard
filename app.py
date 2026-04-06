@@ -60,8 +60,8 @@ try:
             # Apply our smart status logic to the whole table
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             
-            # Select and reorder columns for the slick UI
-            display_df = latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'Timestamp']]
+            # Select and reorder columns for the slick UI - swapped Timestamp for People
+            display_df = latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']]
             
             # Draw the advanced dataframe
             st.dataframe(
@@ -73,7 +73,7 @@ try:
                     "Humidity": st.column_config.ProgressColumn("Humidity", format="%f%%", min_value=0, max_value=100),
                     "VOC Index": st.column_config.NumberColumn("Air Quality (VOC)", format="%d"),
                     "Light": st.column_config.NumberColumn("Light (lux)", format="%d"),
-                    "Timestamp": st.column_config.DatetimeColumn("Last Ping", format="h:mm a"),
+                    "People": st.column_config.NumberColumn("People Count", format="%d"),
                 },
                 hide_index=True,
                 use_container_width=True,
