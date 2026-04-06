@@ -54,16 +54,10 @@ try:
         with main_tab1:
             st.subheader("Live Room Status")
             
-            # Grab only the absolute newest row for each room
             latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
-            
-            # Apply our smart status logic to the whole table
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
-            
-            # Select and reorder columns for the slick UI - swapped Timestamp for People
             display_df = latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']]
             
-            # Draw the advanced dataframe
             st.dataframe(
                 display_df,
                 column_config={
@@ -84,8 +78,6 @@ try:
         # ==========================================
         with main_tab2:
             room_list = sorted(df['Room'].dropna().unique().tolist())
-            
-            # Move the selector inline instead of the sidebar to keep it clean
             selected_room = st.selectbox("Select a room to investigate:", room_list)
             filtered_df = df[df['Room'] == selected_room]
 
@@ -109,22 +101,45 @@ try:
 
                 st.divider()
 
-                # --- CHARTS ---
-                chart_col1, chart_col2 = st.columns(2)
+                # --- NEW CHART LAYOUT ---
                 
+                # ROW 1: Temp & Humidity
+                chart_col1, chart_col2 = st.columns(2)
                 with chart_col1:
-                    st.markdown("#### 🌡️ Environment (Temp & Humidity)")
-                    st.line_chart(filtered_df.set_index("Timestamp")[["Temperature", "Humidity"]])
-                    
-                    st.markdown("#### 💡 Light Levels")
-                    st.area_chart(filtered_df.dropna(subset=['Light']).set_index("Timestamp")["Light"], color="#fcd303")
-
+                    st.markdown("#### 🌡️ Temperature (°C)")
+                    temp_df = filtered_df.dropna(subset=['Temperature']).set_index("Timestamp")["Temperature"]
+                    if not temp_df.empty:
+                        st.line_chart(temp_df, color="#ff4b4b")
                 with chart_col2:
-                    st.markdown("#### 👥 Occupancy Trends")
-                    st.area_chart(filtered_df.dropna(subset=['People']).set_index("Timestamp")["People"], color="#ffaa00")
-                    
+                    st.markdown("#### 💧 Humidity (%)")
+                    hum_df = filtered_df.dropna(subset=['Humidity']).set_index("Timestamp")["Humidity"]
+                    if not hum_df.empty:
+                        st.line_chart(hum_df, color="#0068c9")
+
+                # ROW 2: Air Quality & Light
+                chart_col3, chart_col4 = st.columns(2)
+                with chart_col3:
                     st.markdown("#### 🌬️ Air Quality (VOC Index)")
-                    st.line_chart(filtered_df.dropna(subset=['VOC Index']).set_index("Timestamp")["VOC Index"], color="#29b09d")
+                    voc_df = filtered_df.dropna(subset=['VOC Index']).set_index("Timestamp")["VOC Index"]
+                    if not voc_df.empty:
+                        st.line_chart(voc_df, color="#29b09d")
+                    else:
+                        st.info("No VOC data recorded yet.")
+                with chart_col4:
+                    st.markdown("#### 💡 Light Levels (lux)")
+                    light_df = filtered_df.dropna(subset=['Light']).set_index("Timestamp")["Light"]
+                    if not light_df.empty:
+                        st.area_chart(light_df, color="#fcd303")
+                    else:
+                        st.info("No light data recorded yet.")
+                
+                # ROW 3: Occupancy (Full Width)
+                st.markdown("#### 👥 Occupancy Trends (People Count)")
+                ppl_df = filtered_df.dropna(subset=['People']).set_index("Timestamp")["People"]
+                if not ppl_df.empty:
+                    st.area_chart(ppl_df, color="#ffaa00")
+                else:
+                    st.info("No occupancy data recorded yet.")
 
             else:
                 st.warning("No historical data found for this room.")
