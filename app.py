@@ -87,4 +87,50 @@ try:
             
             # Move the selector inline instead of the sidebar to keep it clean
             selected_room = st.selectbox("Select a room to investigate:", room_list)
-            filtered_df = df[df['Room'] == selected_
+            filtered_df = df[df['Room'] == selected_room]
+
+            if not filtered_df.empty:
+                latest = filtered_df.iloc[-1]
+                
+                st.divider()
+                
+                # --- TOP METRICS ---
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Temperature", f"{latest['Temperature']:.1f} °C" if pd.notna(latest['Temperature']) else "N/A")
+                c2.metric("Humidity", f"{latest['Humidity']:.1f} %" if pd.notna(latest['Humidity']) else "N/A")
+                
+                voc = latest['VOC Index']
+                if pd.notna(voc):
+                    c3.metric("Air Quality (VOC)", f"{voc:.0f}", delta="Poor Air" if voc > 150 else "Good", delta_color="inverse" if voc > 150 else "normal")
+                else:
+                    c3.metric("Air Quality (VOC)", "N/A")
+                    
+                c4.metric("Light Level", f"{latest['Light']:.0f} lux" if pd.notna(latest['Light']) else "N/A")
+
+                st.divider()
+
+                # --- CHARTS ---
+                chart_col1, chart_col2 = st.columns(2)
+                
+                with chart_col1:
+                    st.markdown("#### 🌡️ Environment (Temp & Humidity)")
+                    st.line_chart(filtered_df.set_index("Timestamp")[["Temperature", "Humidity"]])
+                    
+                    st.markdown("#### 💡 Light Levels")
+                    st.area_chart(filtered_df.dropna(subset=['Light']).set_index("Timestamp")["Light"], color="#fcd303")
+
+                with chart_col2:
+                    st.markdown("#### 👥 Occupancy Trends")
+                    st.area_chart(filtered_df.dropna(subset=['People']).set_index("Timestamp")["People"], color="#ffaa00")
+                    
+                    st.markdown("#### 🌬️ Air Quality (VOC Index)")
+                    st.line_chart(filtered_df.dropna(subset=['VOC Index']).set_index("Timestamp")["VOC Index"], color="#29b09d")
+
+            else:
+                st.warning("No historical data found for this room.")
+
+    else:
+        st.warning("No data found in the spreadsheet yet.")
+
+except Exception as e:
+    st.error(f"Uh oh! Couldn't load the data. (Error: {e})")
