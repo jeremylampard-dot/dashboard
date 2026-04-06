@@ -5,42 +5,29 @@ import pandas as pd
 st.set_page_config(page_title="Neat Intelligence Dashboard", layout="wide", page_icon="🏢")
 
 # ==========================================
-# CUSTOM CSS: THE CHUNKY DARK GREY THEME
+# CUSTOM CSS: CHUNKY FONTS & SMOOTH BORDERS
 # ==========================================
 st.markdown("""
 <style>
-    /* 1. Force the Dark Grey Background */
-    .stApp {
-        background-color: #22242b !important;
-    }
-
-    /* 2. Make all Headings Bolder and Chunkier */
+    /* 1. Make all Headings Bolder and Chunkier */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Arial Black', 'Impact', sans-serif !important;
         font-weight: 900 !important;
         letter-spacing: -0.05em;
-        color: #f0f2f6 !important;
     }
 
-    /* 3. Style the Metric Scorecards with Smooth Borders */
+    /* 2. Style the Metric Scorecards with Smooth Borders */
     [data-testid="stMetric"] {
-        background-color: #2d303a;
         border: 2px solid #404452;
         border-radius: 12px;
         padding: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     }
     
-    /* 4. Chunky Metric Numbers */
+    /* 3. Chunky Metric Numbers */
     [data-testid="stMetricValue"] {
         font-weight: 900 !important;
         font-size: 2.2rem !important;
-        color: #ffffff !important;
-    }
-
-    /* 5. Make regular text slightly bolder */
-    p, span, div {
-        font-weight: 500;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -94,7 +81,6 @@ try:
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             display_df = latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']]
             
-            # Wrap the table in a smooth bordered container!
             with st.container(border=True):
                 st.dataframe(
                     display_df,
@@ -117,7 +103,6 @@ try:
         with main_tab2:
             room_list = sorted(df['Room'].dropna().unique().tolist())
             
-            # Wrap the selector in a bordered container
             with st.container(border=True):
                 selected_room = st.selectbox("Select a room to investigate:", room_list)
             
@@ -128,7 +113,7 @@ try:
                 
                 st.divider()
                 
-                # Metrics (These get automatically styled with borders from our CSS!)
+                # Metrics 
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Temperature", f"{latest['Temperature']:.1f} °C" if pd.notna(latest['Temperature']) else "N/A")
                 c2.metric("Humidity", f"{latest['Humidity']:.1f} %" if pd.notna(latest['Humidity']) else "N/A")
@@ -143,7 +128,7 @@ try:
 
                 st.divider()
 
-                # --- CHARTS WRAPPED IN SMOOTH BORDERS ---
+                # --- CHARTS (NOW IN SHADES OF PURPLE) ---
                 chart_col1, chart_col2 = st.columns(2)
                 
                 with chart_col1:
@@ -151,14 +136,14 @@ try:
                         st.markdown("#### 🌡️ Temperature (°C)")
                         temp_df = filtered_df.dropna(subset=['Temperature']).set_index("Timestamp")["Temperature"]
                         if not temp_df.empty:
-                            st.line_chart(temp_df, color="#ff4b4b")
+                            st.line_chart(temp_df, color="#b388ff") # Light Purple
                             
                 with chart_col2:
                     with st.container(border=True):
                         st.markdown("#### 💧 Humidity (%)")
                         hum_df = filtered_df.dropna(subset=['Humidity']).set_index("Timestamp")["Humidity"]
                         if not hum_df.empty:
-                            st.line_chart(hum_df, color="#0068c9")
+                            st.line_chart(hum_df, color="#7c4dff") # Medium Purple
 
                 chart_col3, chart_col4 = st.columns(2)
                 
@@ -167,7 +152,7 @@ try:
                         st.markdown("#### 🌬️ Air Quality (VOC Index)")
                         voc_df = filtered_df.dropna(subset=['VOC Index']).set_index("Timestamp")["VOC Index"]
                         if not voc_df.empty:
-                            st.line_chart(voc_df, color="#29b09d")
+                            st.line_chart(voc_df, color="#651fff") # Bright Purple
                         else:
                             st.info("No VOC data recorded yet.")
                             
@@ -176,7 +161,7 @@ try:
                         st.markdown("#### 💡 Light Levels (lux)")
                         light_df = filtered_df.dropna(subset=['Light']).set_index("Timestamp")["Light"]
                         if not light_df.empty:
-                            st.area_chart(light_df, color="#fcd303")
+                            st.area_chart(light_df, color="#e040fb") # Neon Magenta/Purple
                         else:
                             st.info("No light data recorded yet.")
                 
@@ -184,7 +169,7 @@ try:
                     st.markdown("#### 👥 Occupancy Trends (People Count)")
                     ppl_df = filtered_df.dropna(subset=['People']).set_index("Timestamp")["People"]
                     if not ppl_df.empty:
-                        st.area_chart(ppl_df, color="#ffaa00")
+                        st.area_chart(ppl_df, color="#aa00ff") # Deep Chunky Purple
                     else:
                         st.info("No occupancy data recorded yet.")
 
