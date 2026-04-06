@@ -28,91 +28,63 @@ def load_data(url):
     df = df.sort_values('Timestamp')
     return df
 
+# --- HELPER FUNCTION FOR STATUS ---
+def get_smart_status(row):
+    hw_status = str(row['Status']).strip().lower()
+    people = row['People'] if pd.notna(row['People']) else 0
+    
+    if hw_status == "in use":
+        return "🔴 IN USE"
+    elif people > 0:
+        return f"🟡 OCCUPIED ({int(people)})"
+    else:
+        return "🟢 AVAILABLE"
+
 try:
     with st.spinner('Pulling live telemetry...'):
         df = load_data(SHEET_URL)
 
-    # --- SIDEBAR FILTERS ---
-    st.sidebar.header("⚙️ Select Location")
-    room_list = sorted(df['Room'].dropna().unique().tolist())
-    selected_room = st.sidebar.selectbox("Room Name", room_list)
+    if not df.empty:
+        # --- MAIN NAVIGATION TABS ---
+        main_tab1, main_tab2 = st.tabs(["🌐 Fleet Overview (Live)", "🔍 Room Deep Dive (History)"])
 
-    filtered_df = df[df['Room'] == selected_room]
-
-    if not filtered_df.empty:
-        latest = filtered_df.iloc[-1]
-        
-        # --- HARDWARE STATUS LOGIC ---
-        # Reads directly from your new Google Sheet column
-        hardware_status = str(latest['Status']).strip().lower()
-        people_count = latest['People'] if pd.notna(latest['People']) else 0
-        
-        if hardware_status == "in use":
-            st.error(f"**Room Status:** 🔴 IN USE (Active Call/Meeting)")
-        elif people_count > 0:
-            st.warning(f"**Room Status:** 🟡 OCCUPIED (Not in a call, but {int(people_count)} people detected)")
-        else:
-            st.success(f"**Room Status:** 🟢 AVAILABLE")
-
-        st.divider()
-
-        # --- TOP METRICS (Scorecards) ---
-        c1, c2, c3, c4, c5 = st.columns(5)
-        
-        c1.metric("Temperature", f"{latest['Temperature']:.1f} °C" if pd.notna(latest['Temperature']) else "N/A")
-        c2.metric("Humidity", f"{latest['Humidity']:.1f} %" if pd.notna(latest['Humidity']) else "N/A")
-        
-        # VOC Index Logic (100 is normal baseline)
-        voc = latest['VOC Index']
-        if pd.notna(voc):
-            if voc > 150:
-                c3.metric("Air Quality (VOC)", f"{voc:.0f}", delta="Poor Air", delta_color="inverse")
-            else:
-                c3.metric("Air Quality (VOC)", f"{voc:.0f}", delta="Good", delta_color="normal")
-        else:
-            c3.metric("Air Quality (VOC)", "N/A")
+        # ==========================================
+        # TAB 1: THE NEW SLICK OVERVIEW
+        # ==========================================
+        with main_tab1:
+            st.subheader("Live Room Status")
             
-        c4.metric("Light Level", f"{latest['Light']:.0f} lux" if pd.notna(latest['Light']) else "N/A")
-        c5.metric("People Count", f"{people_count:.0f}")
-
-        st.divider()
-
-        # --- TABS FOR CHARTS ---
-        tab1, tab2 = st.tabs(["👥 Occupancy & Environment", "🌬️ Air Quality & Light Deep Dive"])
-
-        with tab1:
-            st.markdown("### 👥 Occupancy Trends")
-            ppl_df = filtered_df.dropna(subset=['People']).set_index("Timestamp")["People"]
-            if not ppl_df.empty:
-                st.area_chart(ppl_df, color="#ffaa00") 
+            # Grab only the absolute newest row for each room
+            latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
             
-            st.markdown("### 🌡️ Temperature & Humidity")
-            chart_col1, chart_col2 = st.columns(2)
-            with chart_col1:
-                temp_df = filtered_df.dropna(subset=['Temperature']).set_index("Timestamp")["Temperature"]
-                st.line_chart(temp_df, color="#ff4b4b")
-            with chart_col2:
-                hum_df = filtered_df.dropna(subset=['Humidity']).set_index("Timestamp")["Humidity"]
-                st.line_chart(hum_df, color="#0068c9")
+            # Apply our smart status logic to the whole table
+            latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
+            
+            # Select and reorder columns for the slick UI
+            display_df = latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'Timestamp']]
+            
+            # Draw the advanced dataframe
+            st.dataframe(
+                display_df,
+                column_config={
+                    "Room": st.column_config.TextColumn("Room Name", width="medium"),
+                    "Live Status": st.column_config.TextColumn("Live Status", width="medium"),
+                    "Temperature": st.column_config.NumberColumn("Temp (°C)", format="%.1f"),
+                    "Humidity": st.column_config.ProgressColumn("Humidity", format="%f%%", min_value=0, max_value=100),
+                    "VOC Index": st.column_config.NumberColumn("Air Quality (VOC)", format="%d"),
+                    "Light": st.column_config.NumberColumn("Light (lux)", format="%d"),
+                    "Timestamp": st.column_config.DatetimeColumn("Last Ping", format="h:mm a"),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
 
-        with tab2:
-            st.markdown("### 🌬️ VOC Index (Air Quality)")
-            st.caption("A VOC Index of 100 represents the average baseline environment. Values above 150 indicate a decline in air quality.")
-            voc_df = filtered_df.dropna(subset=['VOC Index']).set_index("Timestamp")["VOC Index"]
-            if not voc_df.empty:
-                st.line_chart(voc_df, color="#29b09d")
-            else:
-                st.info("No VOC data recorded yet.")
-
-            st.markdown("### 💡 Light Levels (Illumination)")
-            light_df = filtered_df.dropna(subset=['Light']).set_index("Timestamp")["Light"]
-            if not light_df.empty:
-                st.area_chart(light_df, color="#fcd303")
-            else:
-                st.info("No light data recorded yet.")
-
-    else:
-        st.warning("No data found for this room. Waiting for sensor update...")
-
-except Exception as e:
-    st.error(f"Uh oh! Couldn't load the data. (Error: {e})")
+        # ==========================================
+        # TAB 2: THE HISTORICAL DEEP DIVE
+        # ==========================================
+        with main_tab2:
+            room_list = sorted(df['Room'].dropna().unique().tolist())
+            
+            # Move the selector inline instead of the sidebar to keep it clean
+            selected_room = st.selectbox("Select a room to investigate:", room_list)
+            filtered_df = df[df['Room'] == selected_
