@@ -41,7 +41,8 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     st.divider()
-    if st.button("🔄 REFRESH & CLEAR CACHE", use_container_width=True):
+    st.markdown("### 🛠️ DASHBOARD CONTROL")
+    if st.button("🔄 REFRESH DATA", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -52,61 +53,48 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSE
 
 @st.cache_data(ttl=60)
 def load_data(url):
-    # skipinitialspace=True helps remove leading spaces automatically
-    df = pd.read_csv(url, skipinitialspace=True)
-    
+    df = pd.read_csv(url)
     if len(df.columns) >= 8:
         df.columns = ["Timestamp", "Room", "Temperature", "Humidity", "People", "VOC Index", "Light", "Status"]
-    
-    # CRITICAL: Clean up all text columns
-    df['Room'] = df['Room'].astype(str).str.strip()
-    df['Status'] = df['Status'].astype(str).str.strip().str.lower()
-    
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-    
+    df['Status'] = df['Status'].astype(str)
     df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
     return df
 
-# --- SMART STATUS LOGIC ---
+# --- RESTORED STATUS LOGIC ---
 def get_smart_status(row):
-    raw_status = str(row['Status']) # Already lowered and stripped in load_data
+    hw_status = str(row['Status']).strip().lower()
     people = row['People'] if pd.notna(row['People']) else 0
-    
-    # We check if "in use" is contained in the string to be safe
-    if "in use" in raw_status: 
-        return "🔴 IN USE"
-    elif people > 0: 
-        return f"🟡 OCCUPIED ({int(people)})"
-    else: 
-        return "🟢 AVAILABLE"
+    if hw_status == "in use": return "🔴 IN USE"
+    elif people > 0: return f"🟡 OCCUPIED ({int(people)})"
+    else: return "🟢 AVAILABLE"
 
 try:
-    # Explicitly clear old cached data if you suspect it's stale
     df = load_data(SHEET_URL)
-    
     if not df.empty:
         tab1, tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
 
         with tab1:
             st.subheader("LIVE FLEET STATUS")
-            # Get the absolute latest ping for every room
-            latest_data = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
+            # --- Overview Table with Restored Status ---
+            latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             
             with st.container(border=True):
                 st.dataframe(
                     latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
                     column_config={
-                        "Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100),
-                        "Temperature": st.column_config.NumberColumn("Temp (°C)", format="%.1f"),
-                        "People": st.column_config.NumberColumn("Occupancy"),
+                        "Humidity": st.column_config.ProgressColumn("Humidity", format="%f%%", min_value=0, max_value=100),
+                        "Temperature": st.column_config.NumberColumn("Temp °C", format="%.1f"),
                     },
-                    hide_index=True, use_container_width=True
+                    hide_index=True, 
+                    use_container_width=True
                 )
 
         with tab2:
+            # --- Deep Dive Header ---
             c_room, c_date, c_grain = st.columns([1.5, 2, 1])
             with c_room:
                 selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
@@ -117,6 +105,7 @@ try:
             with c_grain:
                 grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg", "Weekly Avg"])
 
+            # Filter Logic
             f_df = df[df['Room'] == selected_room].copy()
             if len(date_range) == 2:
                 start_dt, end_dt = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) + timedelta(days=1)
@@ -127,36 +116,36 @@ try:
             rule = g_map[grain]
 
             if not f_df.empty:
-                # Use numeric_only=True to prevent the "str" error we had earlier
-                resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
+                # Resample Data
+                c_df = f_df.resample(rule).mean() if rule else f_df
                 
-                # --- OCCUPANCY AT TOP ---
-                st.markdown("#### 👥 LIVE OCCUPANCY HISTORY")
+                # --- 1. OCCUPANCY AT THE TOP (SLIM HEIGHT) ---
+                st.markdown("#### 👥 OCCUPANCY HISTORY")
                 occ_data = f_df["People"].resample(rule).max() if rule else f_df["People"]
                 st.bar_chart(occ_data, color="#aa00ff", height=180)
 
                 st.divider()
 
-                # --- ENVIRONMENT GRID ---
+                # --- 2. ENVIRONMENT METRICS ---
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     with st.container(border=True):
-                        st.markdown("#### TEMPERATURE")
-                        st.line_chart(resampled["Temperature"], color="#b388ff")
+                        st.markdown("#### TEMPERATURE (°C)")
+                        st.line_chart(c_df["Temperature"], color="#b388ff")
                 with r1_2:
                     with st.container(border=True):
-                        st.markdown("#### HUMIDITY")
-                        st.line_chart(resampled["Humidity"], color="#7c4dff")
+                        st.markdown("#### HUMIDITY (%)")
+                        st.line_chart(c_df["Humidity"], color="#7c4dff")
 
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     with st.container(border=True):
-                        st.markdown("#### AIR QUALITY")
-                        st.line_chart(resampled["VOC Index"], color="#651fff")
+                        st.markdown("#### AIR QUALITY (VOC)")
+                        st.line_chart(c_df["VOC Index"], color="#651fff")
                 with r2_2:
                     with st.container(border=True):
-                        st.markdown("#### LIGHT LEVELS")
-                        st.bar_chart(resampled["Light"], color="#e040fb")
+                        st.markdown("#### LIGHT LEVELS (LUX)")
+                        st.bar_chart(c_df["Light"], color="#e040fb")
             else:
                 st.warning("No data found for this selection.")
 
