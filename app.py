@@ -41,16 +41,10 @@ with st.sidebar:
     st.markdown("### ☁️ LOCAL WEATHER")
     st.markdown("**City of London, UK**")
     
-    # Sleek WeatherWidget.io embed
-    weather_html = """
-    <a class="weatherwidget-io" href="https://weatherwidget.io/w/london/" data-label_1="LONDON" data-label_2="WEATHER" data-theme="dark" data-basecolor="#1a1c23" data-accent="#9c27b0" data-textcolor="#f0f2f6" >LONDON WEATHER</a>
-    <script>
-    !function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='https://weatherwidget.io/js/widget.min.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','weatherwidget-io-js');
-    </script>
-    """
-    components.html(weather_html, height=150)
-    st.divider()
-    st.info("Tip: Compare outside temp with room metrics to check HVAC efficiency.")
+   # Stable, No-Script Weather Widget
+    # This uses a direct image link that won't be blocked by iframe sandboxing
+    weather_url = "https://wttr.in/London_2p_0_m_lang=en.png"
+    st.image(weather_url, caption="Live London Conditions", use_container_width=True)
 
 st.title("🏢 Neat Room Intelligence")
 
