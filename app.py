@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
 
 # --- Page Config ---
-st.set_page_config(page_title="Neat London Showroom", layout="wide", page_icon="🏢")
+st.set_page_config(page_title="Neat Intelligence Dashboard", layout="wide", page_icon="🏢")
 
 # ==========================================
 # FORCED DARK MODE & CHUNKY STYLE
@@ -26,7 +27,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏢 Neat London Showroom")
+st.title("🏢 Neat Room Intelligence")
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
@@ -61,68 +62,84 @@ try:
                 st.dataframe(latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], hide_index=True, use_container_width=True)
 
         with main_tab2:
-            c_room, c_grain = st.columns([2, 1])
+            # --- FILTER ROW ---
+            c_room, c_date, c_grain = st.columns([1.5, 2, 1])
+            
             with c_room:
                 selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
+            
+            with c_date:
+                # Set default range to last 7 days
+                start_default = (datetime.now() - timedelta(days=7)).date()
+                end_default = datetime.now().date()
+                date_range = st.date_input("SELECT DATE RANGE:", [start_default, end_default])
+            
             with c_grain:
                 grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg", "Weekly Avg"])
-            
-            grain_map = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D", "Weekly Avg": "W"}
-            resample_rule = grain_map[grain]
 
+            # --- FILTERING LOGIC ---
+            # 1. Filter by Room
             filtered_df = df[df['Room'] == selected_room].copy()
+            
+            # 2. Filter by Date Range (only if a full range is selected)
+            if len(date_range) == 2:
+                start_dt = pd.to_datetime(date_range[0])
+                end_dt = pd.to_datetime(date_range[1]) + timedelta(days=1) # Include the end day
+                filtered_df = filtered_df[(filtered_df['Timestamp'] >= start_dt) & (filtered_df['Timestamp'] < end_dt)]
+
             filtered_df = filtered_df.set_index("Timestamp")
             num_cols = ["Temperature", "Humidity", "People", "VOC Index", "Light"]
 
-            if resample_rule:
-                chart_df = filtered_df[num_cols].resample(resample_rule).mean()
-            else:
-                chart_df = filtered_df[num_cols]
+            grain_map = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D", "Weekly Avg": "W"}
+            resample_rule = grain_map[grain]
 
             if not filtered_df.empty:
+                if resample_rule:
+                    chart_df = filtered_df[num_cols].resample(resample_rule).mean()
+                else:
+                    chart_df = filtered_df[num_cols]
+
                 latest = filtered_df.iloc[-1]
                 st.divider()
                 
                 m1, m2, m3, m4 = st.columns(4)
-                m1.metric("TEMP", f"{latest['Temperature']:.1f} °C")
-                m2.metric("HUMIDITY", f"{latest['Humidity']:.1f} %")
-                m3.metric("VOC INDEX", f"{latest['VOC Index']:.0f}")
-                m4.metric("LIGHT", f"{latest['Light']:.0f} lux")
+                m1.metric("LATEST TEMP", f"{latest['Temperature']:.1f} °C")
+                m2.metric("LATEST HUMIDITY", f"{latest['Humidity']:.1f} %")
+                m3.metric("LATEST VOC", f"{latest['VOC Index']:.0f}")
+                m4.metric("LATEST LIGHT", f"{latest['Light']:.0f} lux")
 
                 st.divider()
 
-                # --- ROW 1: Temp & Humidity (Lines work best here) ---
+                # Charts
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     with st.container(border=True):
-                        st.markdown("#### TEMPERATURE")
+                        st.markdown("#### TEMPERATURE TREND")
                         st.line_chart(chart_df["Temperature"], color="#b388ff")
                 with r1_2:
                     with st.container(border=True):
-                        st.markdown("#### HUMIDITY")
+                        st.markdown("#### HUMIDITY TREND")
                         st.line_chart(chart_df["Humidity"], color="#7c4dff")
 
-                # --- ROW 2: Air Quality (Line) & Light (BARS) ---
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     with st.container(border=True):
-                        st.markdown("#### AIR QUALITY")
+                        st.markdown("#### AIR QUALITY TREND")
                         st.line_chart(chart_df["VOC Index"], color="#651fff")
                 with r2_2:
                     with st.container(border=True):
-                        st.markdown("#### LIGHT LEVEL")
-                        # UPDATED TO BAR CHART
+                        st.markdown("#### LIGHT LEVELS")
                         st.bar_chart(chart_df["Light"], color="#e040fb")
                 
-                # --- ROW 3: OCCUPANCY (BARS) ---
                 with st.container(border=True):
-                    st.markdown("#### LIVE OCCUPANCY HISTORY")
+                    st.markdown("#### OCCUPANCY HISTORY")
                     if resample_rule:
                         occ_data = filtered_df["People"].resample(resample_rule).max()
                     else:
                         occ_data = filtered_df["People"]
-                    # UPDATED TO BAR CHART
                     st.bar_chart(occ_data, color="#aa00ff")
+            else:
+                st.warning("No data found for the selected room and date range.")
 
     else:
         st.warning("Awaiting initial data stream...")
