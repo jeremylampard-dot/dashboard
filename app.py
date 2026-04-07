@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 # --- Page Config ---
-st.set_page_config(page_title="Neat London Showroom", layout="wide", page_icon="🏢")
+st.set_page_config(page_title="Neat Intelligence Dashboard", layout="wide", page_icon="🏢")
 
 # ==========================================
 # FORCED DARK MODE & CHUNKY STYLE
@@ -45,8 +45,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- THE UPDATED TITLE ---
-st.title("🏢 Neat London Showroom")
+st.title("🏢 Neat Room Intelligence")
 
 # --- DATA LOADING ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
@@ -72,10 +71,10 @@ def load_data(url):
 
 # --- SMART STATUS LOGIC ---
 def get_smart_status(row):
-    raw_status = str(row['Status']) 
+    raw_status = str(row['Status']) # Already lowered and stripped in load_data
     people = row['People'] if pd.notna(row['People']) else 0
     
-    # Robust check for status string
+    # We check if "in use" is contained in the string to be safe
     if "in use" in raw_status: 
         return "🔴 IN USE"
     elif people > 0: 
@@ -84,6 +83,7 @@ def get_smart_status(row):
         return "🟢 AVAILABLE"
 
 try:
+    # Explicitly clear old cached data if you suspect it's stale
     df = load_data(SHEET_URL)
     
     if not df.empty:
@@ -91,7 +91,7 @@ try:
 
         with tab1:
             st.subheader("LIVE FLEET STATUS")
-            # Get latest ping per room
+            # Get the absolute latest ping for every room
             latest_data = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             
@@ -127,7 +127,7 @@ try:
             rule = g_map[grain]
 
             if not f_df.empty:
-                # Math safety for resampled views
+                # Use numeric_only=True to prevent the "str" error we had earlier
                 resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
                 
                 # --- OCCUPANCY AT TOP ---
