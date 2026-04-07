@@ -34,23 +34,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# SIDEBAR: BULLETPROOF WEATHER CARD
+# ================= =========================
+# SIDEBAR: RELIABLE WEATHER WIDGET
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ LONDON STATUS")
     
-    # Using a high-quality, auto-updating weather image
-    # This bypasses all "Black Box" script issues
-    weather_url = "https://vrs-weather-card.vercel.app/api/weather/London?theme=dark&bg=1a1c23&border=9c27b0"
+    # Meteoblue high-res image widget (No-Script / No-API needed)
+    # This is a direct image embed that bypasses all security blocks
+    weather_url = "https://www.meteoblue.com/en/weather/widget/daily/london_united-kingdom_2643743?geosize=monochrome&days=4&tempunit=CELSIUS&windunit=KILOMETER_PER_HOUR&precipunit=MILLIMETER&coloured=coloured&pictoicon=1&cityname=1&background=none&text_color=f0f2f6"
     
     with st.container(border=True):
         st.image(weather_url, use_container_width=True)
     
     st.divider()
     st.markdown("🔍 **SYSTEM STATUS: ONLINE**")
-
-st.title("🏢 Neat Room Intelligence")
 
 # --- DATA LOADING ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
