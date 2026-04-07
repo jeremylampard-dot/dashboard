@@ -35,16 +35,35 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SIDEBAR: LIVE LONDON WEATHER WIDGET
+# SIDEBAR: EXECUTIVE WEATHER CARD
 # ==========================================
 with st.sidebar:
-    st.markdown("### ☁️ LOCAL WEATHER")
-    st.markdown("**City of London, UK**")
+    st.markdown("### ☁️ LONDON STATUS")
     
-   # Stable, No-Script Weather Widget
-    # This uses a direct image link that won't be blocked by iframe sandboxing
-    weather_url = "https://wttr.in/London_2p_0_m_lang=en.png"
-    st.image(weather_url, caption="Live London Conditions", use_container_width=True)
+    # This is a high-res, clean weather card from a reliable source
+    # It's themed to match your dark grey background
+    weather_card = """
+    <div style="border-radius: 15px; overflow: hidden; border: 2px solid #9c27b0;">
+        <a class="weatherwidget-io" href="https://weatherwidget.io/w/london/" 
+           data-label_1="LONDON" 
+           data-label_2="UNITED KINGDOM" 
+           data-font="Roboto" 
+           data-icons="Climacons Animated" 
+           data-theme="dark" 
+           data-basecolor="#1a1c23" 
+           data-accent="#9c27b0" 
+           data-textcolor="#f0f2f6" >LONDON WEATHER</a>
+    </div>
+    <script>
+    !function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='https://weatherwidget.io/js/widget.min.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','weatherwidget-io-js');
+    </script>
+    """
+    
+    # We increase the height here so it doesn't look "small and awful"
+    components.html(weather_card, height=220)
+    
+    st.divider()
+    st.markdown("🔍 **System Status: Online**")
 
 st.title("🏢 Neat Room Intelligence")
 
