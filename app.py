@@ -67,7 +67,6 @@ try:
             with c_grain:
                 grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg", "Weekly Avg"])
             
-            # --- THE FIX: Lowercase frequency aliases for Pandas compatibility ---
             grain_map = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D", "Weekly Avg": "W"}
             resample_rule = grain_map[grain]
 
@@ -76,7 +75,6 @@ try:
             num_cols = ["Temperature", "Humidity", "People", "VOC Index", "Light"]
 
             if resample_rule:
-                # Group data into time 'bins'
                 chart_df = filtered_df[num_cols].resample(resample_rule).mean()
             else:
                 chart_df = filtered_df[num_cols]
@@ -93,7 +91,7 @@ try:
 
                 st.divider()
 
-                # Charts
+                # --- ROW 1: Temp & Humidity (Lines work best here) ---
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     with st.container(border=True):
@@ -104,6 +102,7 @@ try:
                         st.markdown("#### HUMIDITY")
                         st.line_chart(chart_df["Humidity"], color="#7c4dff")
 
+                # --- ROW 2: Air Quality (Line) & Light (BARS) ---
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     with st.container(border=True):
@@ -112,15 +111,18 @@ try:
                 with r2_2:
                     with st.container(border=True):
                         st.markdown("#### LIGHT LEVEL")
-                        st.area_chart(chart_df["Light"], color="#e040fb")
+                        # UPDATED TO BAR CHART
+                        st.bar_chart(chart_df["Light"], color="#e040fb")
                 
+                # --- ROW 3: OCCUPANCY (BARS) ---
                 with st.container(border=True):
                     st.markdown("#### LIVE OCCUPANCY HISTORY")
                     if resample_rule:
                         occ_data = filtered_df["People"].resample(resample_rule).max()
                     else:
                         occ_data = filtered_df["People"]
-                    st.area_chart(occ_data, color="#aa00ff")
+                    # UPDATED TO BAR CHART
+                    st.bar_chart(occ_data, color="#aa00ff")
 
     else:
         st.warning("Awaiting initial data stream...")
