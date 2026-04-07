@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import streamlit.components.v1 as components # New import for the widget
 
 # --- Page Config ---
 st.set_page_config(page_title="Neat Intelligence Dashboard", layout="wide", page_icon="🏢")
@@ -24,11 +25,36 @@ st.markdown("""
         padding: 15px !important;
     }
     [data-testid="stMetricValue"] { font-weight: 900 !important; color: #ffffff !important; }
+    
+    /* Style for the Sidebar Weather Section */
+    section[data-testid="stSidebar"] {
+        background-color: #1a1c23 !important;
+        padding-top: 2rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# SIDEBAR: LIVE LONDON WEATHER WIDGET
+# ==========================================
+with st.sidebar:
+    st.markdown("### ☁️ LOCAL WEATHER")
+    st.markdown("**City of London, UK**")
+    
+    # Sleek WeatherWidget.io embed
+    weather_html = """
+    <a class="weatherwidget-io" href="https://weatherwidget.io/w/london/" data-label_1="LONDON" data-label_2="WEATHER" data-theme="dark" data-basecolor="#1a1c23" data-accent="#9c27b0" data-textcolor="#f0f2f6" >LONDON WEATHER</a>
+    <script>
+    !function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='https://weatherwidget.io/js/widget.min.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','weatherwidget-io-js');
+    </script>
+    """
+    components.html(weather_html, height=150)
+    st.divider()
+    st.info("Tip: Compare outside temp with room metrics to check HVAC efficiency.")
+
 st.title("🏢 Neat Room Intelligence")
 
+# --- DATA LOADING ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
 @st.cache_data(ttl=60)
@@ -55,53 +81,41 @@ try:
     if not df.empty:
         main_tab1, main_tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
 
+        # TAB 1: FLEET OVERVIEW
         with main_tab1:
             latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             with st.container(border=True):
                 st.dataframe(latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], hide_index=True, use_container_width=True)
 
+        # TAB 2: ROOM DEEP DIVE
         with main_tab2:
-            # --- FILTER ROW ---
             c_room, c_date, c_grain = st.columns([1.5, 2, 1])
-            
             with c_room:
                 selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
-            
             with c_date:
-                # Set default range to last 7 days
                 start_default = (datetime.now() - timedelta(days=7)).date()
                 end_default = datetime.now().date()
                 date_range = st.date_input("SELECT DATE RANGE:", [start_default, end_default])
-            
             with c_grain:
                 grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg", "Weekly Avg"])
 
-            # --- FILTERING LOGIC ---
-            # 1. Filter by Room
             filtered_df = df[df['Room'] == selected_room].copy()
-            
-            # 2. Filter by Date Range (only if a full range is selected)
             if len(date_range) == 2:
                 start_dt = pd.to_datetime(date_range[0])
-                end_dt = pd.to_datetime(date_range[1]) + timedelta(days=1) # Include the end day
+                end_dt = pd.to_datetime(date_range[1]) + timedelta(days=1)
                 filtered_df = filtered_df[(filtered_df['Timestamp'] >= start_dt) & (filtered_df['Timestamp'] < end_dt)]
 
             filtered_df = filtered_df.set_index("Timestamp")
             num_cols = ["Temperature", "Humidity", "People", "VOC Index", "Light"]
-
             grain_map = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D", "Weekly Avg": "W"}
             resample_rule = grain_map[grain]
 
             if not filtered_df.empty:
-                if resample_rule:
-                    chart_df = filtered_df[num_cols].resample(resample_rule).mean()
-                else:
-                    chart_df = filtered_df[num_cols]
-
+                chart_df = filtered_df[num_cols].resample(resample_rule).mean() if resample_rule else filtered_df[num_cols]
                 latest = filtered_df.iloc[-1]
-                st.divider()
                 
+                st.divider()
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("LATEST TEMP", f"{latest['Temperature']:.1f} °C")
                 m2.metric("LATEST HUMIDITY", f"{latest['Humidity']:.1f} %")
@@ -109,8 +123,6 @@ try:
                 m4.metric("LATEST LIGHT", f"{latest['Light']:.0f} lux")
 
                 st.divider()
-
-                # Charts
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     with st.container(border=True):
@@ -132,17 +144,11 @@ try:
                         st.bar_chart(chart_df["Light"], color="#e040fb")
                 
                 with st.container(border=True):
-                    st.markdown("#### OCCUPANCY HISTORY")
-                    if resample_rule:
-                        occ_data = filtered_df["People"].resample(resample_rule).max()
-                    else:
-                        occ_data = filtered_df["People"]
+                    st.markdown("#### LIVE OCCUPANCY HISTORY")
+                    occ_data = filtered_df["People"].resample(resample_rule).max() if resample_rule else filtered_df["People"]
                     st.bar_chart(occ_data, color="#aa00ff")
             else:
-                st.warning("No data found for the selected room and date range.")
-
-    else:
-        st.warning("Awaiting initial data stream...")
+                st.warning("No data found for the selected range.")
 
 except Exception as e:
     st.error(f"SYSTEM ERROR: {e}")
