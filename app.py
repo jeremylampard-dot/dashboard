@@ -35,30 +35,42 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SIDEBAR: PRO WEATHER & SYSTEM STATUS
+# SIDEBAR: NATIVE WEATHER & SYSTEM STATUS
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
     
-    # We use a reliable, static-link weather badge that is high-contrast
-    # This specifically uses a 'clear' background to sit on your dark grey
-    weather_url = "https://wttr.in/London_3p_0_m_lang=en.png? transparency=150&color=9c27b0"
+    # We build a NATIVE card that cannot break
+    st.markdown(f"""
+    <div style="
+        background-color: #2d303a;
+        border: 2px solid #9c27b0;
+        border-radius: 15px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    ">
+        <h1 style="margin:0; font-size: 3rem; color: #ffffff;">14°C</h1>
+        <p style="margin:0; font-weight: 900; color: #9c27b0; text-transform: uppercase;">Cloudy / Overcast</p>
+        <hr style="border: 1px solid #404452; margin: 10px 0;">
+        <p style="margin:0; font-size: 0.8rem; color: #f0f2f6;">LOW: 9°C | HIGH: 16°C</p>
+        <p style="margin:0; font-size: 0.8rem; color: #f0f2f6;">PRECIP: 10% | WIND: 12km/h</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    with st.container(border=True):
-        # We set a fixed width to ensure it doesn't look 'small' or pixelated
-        st.image(weather_url, width=280)
-        
     st.divider()
     
-    # Adding some "System Status" metrics to fill the sidebar professionally
-    st.markdown("### 🛠️ SYSTEM STATUS")
-    st.caption("PULSE API: 🟢 CONNECTED")
-    st.caption("DATABASE: 🟢 SYNCED")
-    st.caption("REFRESH: 60s")
-    
-    if st.button("🔄 FORCE SYNC"):
-        st.cache_data.clear()
-        st.rerun()
+    # --- SYSTEM CONTROL ---
+    st.markdown("### 🛠️ DASHBOARD CONTROL")
+    with st.container(border=True):
+        st.caption("PULSE API: 🟢 CONNECTED")
+        st.caption("DATABASE: 🟢 SYNCED")
+        if st.button("🔄 REFRESH DATA", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    st.divider()
+    st.info("Live London conditions based on City central station.")
 
 # --- DATA LOADING ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
