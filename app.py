@@ -59,8 +59,17 @@ def load_data(url):
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
+    df['Status'] = df['Status'].astype(str)
     df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
     return df
+
+# --- RESTORED STATUS LOGIC ---
+def get_smart_status(row):
+    hw_status = str(row['Status']).strip().lower()
+    people = row['People'] if pd.notna(row['People']) else 0
+    if hw_status == "in use": return "🔴 IN USE"
+    elif people > 0: return f"🟡 OCCUPIED ({int(people)})"
+    else: return "🟢 AVAILABLE"
 
 try:
     df = load_data(SHEET_URL)
@@ -68,9 +77,21 @@ try:
         tab1, tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
 
         with tab1:
-            # --- Overview Table ---
+            st.subheader("LIVE FLEET STATUS")
+            # --- Overview Table with Restored Status ---
             latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
-            st.dataframe(latest_data[['Room', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], hide_index=True, use_container_width=True)
+            latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
+            
+            with st.container(border=True):
+                st.dataframe(
+                    latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
+                    column_config={
+                        "Humidity": st.column_config.ProgressColumn("Humidity", format="%f%%", min_value=0, max_value=100),
+                        "Temperature": st.column_config.NumberColumn("Temp °C", format="%.1f"),
+                    },
+                    hide_index=True, 
+                    use_container_width=True
+                )
 
         with tab2:
             # --- Deep Dive Header ---
@@ -98,33 +119,32 @@ try:
                 # Resample Data
                 c_df = f_df.resample(rule).mean() if rule else f_df
                 
-                # --- 1. OCCUPANCY AT THE TOP (HALF HEIGHT) ---
-                st.markdown("#### 👥 LIVE OCCUPANCY HISTORY")
+                # --- 1. OCCUPANCY AT THE TOP (SLIM HEIGHT) ---
+                st.markdown("#### 👥 OCCUPANCY HISTORY")
                 occ_data = f_df["People"].resample(rule).max() if rule else f_df["People"]
-                # We use height=150 to make it half the height of a standard chart
                 st.bar_chart(occ_data, color="#aa00ff", height=180)
 
                 st.divider()
 
-                # --- 2. THE REST OF THE METRICS ---
+                # --- 2. ENVIRONMENT METRICS ---
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     with st.container(border=True):
-                        st.markdown("#### TEMPERATURE")
+                        st.markdown("#### TEMPERATURE (°C)")
                         st.line_chart(c_df["Temperature"], color="#b388ff")
                 with r1_2:
                     with st.container(border=True):
-                        st.markdown("#### HUMIDITY")
+                        st.markdown("#### HUMIDITY (%)")
                         st.line_chart(c_df["Humidity"], color="#7c4dff")
 
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     with st.container(border=True):
-                        st.markdown("#### AIR QUALITY")
+                        st.markdown("#### AIR QUALITY (VOC)")
                         st.line_chart(c_df["VOC Index"], color="#651fff")
                 with r2_2:
                     with st.container(border=True):
-                        st.markdown("#### LIGHT LEVELS")
+                        st.markdown("#### LIGHT LEVELS (LUX)")
                         st.bar_chart(c_df["Light"], color="#e040fb")
             else:
                 st.warning("No data found for this selection.")
