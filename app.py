@@ -35,35 +35,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SIDEBAR: EXECUTIVE WEATHER CARD
+# SIDEBAR: BULLETPROOF WEATHER CARD
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ LONDON STATUS")
     
-    # This is a high-res, clean weather card from a reliable source
-    # It's themed to match your dark grey background
-    weather_card = """
-    <div style="border-radius: 15px; overflow: hidden; border: 2px solid #9c27b0;">
-        <a class="weatherwidget-io" href="https://weatherwidget.io/w/london/" 
-           data-label_1="LONDON" 
-           data-label_2="UNITED KINGDOM" 
-           data-font="Roboto" 
-           data-icons="Climacons Animated" 
-           data-theme="dark" 
-           data-basecolor="#1a1c23" 
-           data-accent="#9c27b0" 
-           data-textcolor="#f0f2f6" >LONDON WEATHER</a>
-    </div>
-    <script>
-    !function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='https://weatherwidget.io/js/widget.min.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','weatherwidget-io-js');
-    </script>
-    """
+    # Using a high-quality, auto-updating weather image
+    # This bypasses all "Black Box" script issues
+    weather_url = "https://vrs-weather-card.vercel.app/api/weather/London?theme=dark&bg=1a1c23&border=9c27b0"
     
-    # We increase the height here so it doesn't look "small and awful"
-    components.html(weather_card, height=220)
+    with st.container(border=True):
+        st.image(weather_url, use_container_width=True)
     
     st.divider()
-    st.markdown("🔍 **System Status: Online**")
+    st.markdown("🔍 **SYSTEM STATUS: ONLINE**")
 
 st.title("🏢 Neat Room Intelligence")
 
