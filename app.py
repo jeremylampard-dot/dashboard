@@ -53,7 +53,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSE
 
 @st.cache_data(ttl=60)
 def load_data(url):
-    df = pd.read_csv(url, skipinitialspace=True)
+    df = pd.read_csv(url)
     if len(df.columns) >= 8:
         df.columns = ["Timestamp", "Room", "Temperature", "Humidity", "People", "VOC Index", "Light", "Status"]
     
@@ -61,20 +61,23 @@ def load_data(url):
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    df['Room'] = df['Room'].astype(str).str.strip()
-    df['Status'] = df['Status'].astype(str).str.strip().str.lower()
-    
+    # Simple, clean conversion
+    df['Status'] = df['Status'].fillna('available').astype(str).str.strip().str.lower()
     df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
     return df
 
+# --- THE FIXED STRICT STATUS LOGIC ---
 def get_smart_status(row):
-    raw_status = str(row['Status'])
-    people = row['People'] if pd.notna(row['People']) else 0
-    if "in use" in raw_status: 
+    status_text = str(row['Status'])
+    people_count = row['People'] if pd.notna(row['People']) else 0
+    
+    # We only trigger RED if the status is exactly "in use"
+    if status_text == "in use":
         return "🔴 IN USE"
-    elif people > 0: 
-        return f"🟡 OCCUPIED ({int(people)})"
-    else: 
+    # Otherwise, we rely entirely on the People count
+    elif people_count > 0:
+        return f"🟡 OCCUPIED ({int(people_count)})"
+    else:
         return "🟢 AVAILABLE"
 
 try:
@@ -85,6 +88,7 @@ try:
 
         with tab1:
             st.subheader("LIVE FLEET STATUS")
+            # Get latest ping per room
             latest_data = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             
@@ -111,7 +115,8 @@ try:
 
             f_df = df[df['Room'] == selected_room].copy()
             if len(date_range) == 2:
-                start_dt, end_dt = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) + timedelta(days=1)
+                start_dt = pd.to_datetime(date_range[0])
+                end_dt = pd.to_datetime(date_range[1]) + timedelta(days=1)
                 f_df = f_df[(f_df['Timestamp'] >= start_dt) & (f_df['Timestamp'] < end_dt)]
             
             f_df = f_df.set_index("Timestamp")
@@ -119,12 +124,9 @@ try:
             rule = g_map[grain]
 
             if not f_df.empty:
-                # --- THE FIX: numeric_only=True prevents the mean() error ---
-                if rule:
-                    resampled = f_df.resample(rule).mean(numeric_only=True)
-                else:
-                    resampled = f_df
-
+                # Math safety for resampled views
+                resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
+                
                 st.markdown("#### 👥 LIVE OCCUPANCY HISTORY")
                 occ_data = f_df["People"].resample(rule).max() if rule else f_df["People"]
                 st.bar_chart(occ_data, color="#aa00ff", height=180)
