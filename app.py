@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
 from datetime import datetime, timedelta
 
 # --- Page Config ---
@@ -42,9 +41,12 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     st.divider()
+    st.markdown("### 🛠️ DASHBOARD CONTROL")
     if st.button("🔄 REFRESH DATA", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+
+st.title("🏢 Neat Room Intelligence")
 
 # --- DATA LOADING ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
@@ -57,8 +59,6 @@ def load_data(url):
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    # Clean Status for reliable matching
     df['Status'] = df['Status'].astype(str).str.strip()
     df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
     return df
@@ -84,12 +84,13 @@ try:
                     latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
                     column_config={
                         "Humidity": st.column_config.ProgressColumn("Humidity", format="%f%%", min_value=0, max_value=100),
-                        "Temperature": st.column_config.NumberColumn("Temp °C", format="%.1f"),
+                        "Temperature": st.column_config.NumberColumn("Temp (degC)", format="%.1f"),
                     },
                     hide_index=True, use_container_width=True
                 )
 
         with tab2:
+            # --- Deep Dive Header ---
             c_room, c_date, c_grain = st.columns([1.5, 2, 1])
             with c_room:
                 selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
@@ -105,34 +106,21 @@ try:
                 start_dt, end_dt = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) + timedelta(days=1)
                 f_df = f_df[(f_df['Timestamp'] >= start_dt) & (f_df['Timestamp'] < end_dt)]
             
+            f_df = f_df.set_index("Timestamp")
             g_map = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D", "Weekly Avg": "W"}
             rule = g_map[grain]
 
             if not f_df.empty:
-                # --- ALTAIR CHART WITH UPDATED LABEL ---
-                st.markdown("#### 👥 OCCUPANCY (RED = NEAT SYSTEM IN CALL)")
+                resampled = f_df[["Temperature", "Humidity", "VOC Index", "Light", "People"]].resample(rule).mean() if rule else f_df
                 
-                chart_source = f_df.copy()
-                
-                # Enhanced Logic: Checks if 'in use' is present regardless of case
-                occ_chart = alt.Chart(chart_source).mark_bar().encode(
-                    x=alt.X('Timestamp:T', title='Time'),
-                    y=alt.Y('People:Q', title='People Count', axis=alt.Axis(tickMinStep=1)),
-                    color=alt.condition(
-                        "test(regexp(datum.Status, '(?i)in use'))", # Case-insensitive regex match
-                        alt.value('#ff4b4b'),     # Bright Red
-                        alt.value('#aa00ff')      # Signature Purple
-                    ),
-                    tooltip=['Timestamp', 'People', 'Status']
-                ).properties(height=200).configure_view(strokeOpacity=0)
-
-                st.altair_chart(occ_chart, use_container_width=True)
+                # --- 1. SLIM OCCUPANCY AT TOP ---
+                st.markdown("#### 👥 LIVE OCCUPANCY HISTORY")
+                occ_data = f_df["People"].resample(rule).max() if rule else f_df["People"]
+                st.bar_chart(occ_data, color="#aa00ff", height=180)
 
                 st.divider()
 
-                # --- ENVIRONMENT METRICS ---
-                resampled = f_df.set_index("Timestamp")[["Temperature", "Humidity", "VOC Index", "Light"]].resample(rule).mean() if rule else f_df.set_index("Timestamp")
-                
+                # --- 2. ENVIRONMENT GRID ---
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     with st.container(border=True):
