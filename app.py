@@ -42,11 +42,11 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
+    # Added a clear cache function directly to the button
     if st.button("🔄 REFRESH DATA", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
-# --- THE NEW TITLE ---
 st.title("🏢 Neat London Showroom dashboard")
 
 # --- DATA LOADING ---
@@ -62,17 +62,19 @@ def load_data(url):
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Cleaning status strings to avoid "Always Red" bugs
-    df['Status'] = df['Status'].astype(str).str.strip().str.lower()
+    # We keep the status as a string but don't force lowercase here
+    df['Status'] = df['Status'].astype(str)
     df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
     return df
 
-# --- STATUS LOGIC ---
+# --- BULLETPROOF STATUS LOGIC ---
 def get_smart_status(row):
-    hw_status = str(row['Status'])
+    # Convert to string and lowercase ONLY for the comparison
+    check_val = str(row['Status']).strip().lower()
     people = row['People'] if pd.notna(row['People']) else 0
     
-    if "in use" in hw_status: 
+    # Check for "in use" or "inuse" to cover all bases
+    if "in use" in check_val or "inuse" in check_val: 
         return "🔴 IN USE"
     elif people > 0: 
         return f"🟡 OCCUPIED ({int(people)})"
@@ -86,7 +88,8 @@ try:
 
         with tab1:
             st.subheader("LIVE FLEET STATUS")
-            latest_data = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
+            # Ensure we are getting the literal last entry for each room
+            latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
             latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
             
             with st.container(border=True):
@@ -122,6 +125,7 @@ try:
             rule = g_map[grain]
 
             if not f_df.empty:
+                # Use numeric_only to avoid math errors on the Status column
                 c_df = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
                 
                 st.markdown("#### 👥 OCCUPANCY HISTORY")
@@ -135,22 +139,3 @@ try:
                     with st.container(border=True):
                         st.markdown("#### TEMPERATURE (°C)")
                         st.line_chart(c_df["Temperature"], color="#b388ff")
-                with r1_2:
-                    with st.container(border=True):
-                        st.markdown("#### HUMIDITY (%)")
-                        st.line_chart(c_df["Humidity"], color="#7c4dff")
-
-                r2_1, r2_2 = st.columns(2)
-                with r2_1:
-                    with st.container(border=True):
-                        st.markdown("#### AIR QUALITY (VOC)")
-                        st.line_chart(c_df["VOC Index"], color="#651fff")
-                with r2_2:
-                    with st.container(border=True):
-                        st.markdown("#### LIGHT LEVELS (LUX)")
-                        st.bar_chart(c_df["Light"], color="#e040fb")
-            else:
-                st.warning("No data found for this selection.")
-
-except Exception as e:
-    st.error(f"SYSTEM ERROR: {e}")
