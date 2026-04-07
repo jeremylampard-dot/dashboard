@@ -26,7 +26,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏢 Neat london Showroom")
+st.title("🏢 Neat Room Intelligence")
 
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
@@ -67,18 +67,16 @@ try:
             with c_grain:
                 grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg", "Weekly Avg"])
             
-            grain_map = {"Minutes (Raw)": None, "Hourly Avg": "H", "Daily Avg": "D", "Weekly Avg": "W"}
+            # --- THE FIX: Lowercase frequency aliases for Pandas compatibility ---
+            grain_map = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D", "Weekly Avg": "W"}
             resample_rule = grain_map[grain]
 
             filtered_df = df[df['Room'] == selected_room].copy()
             filtered_df = filtered_df.set_index("Timestamp")
-
-            # --- THE FIX IS HERE ---
-            # Define which columns are actually numbers so we don't try to average "Status"
             num_cols = ["Temperature", "Humidity", "People", "VOC Index", "Light"]
 
             if resample_rule:
-                # Only resample the numeric columns to prevent the 'str' error
+                # Group data into time 'bins'
                 chart_df = filtered_df[num_cols].resample(resample_rule).mean()
             else:
                 chart_df = filtered_df[num_cols]
@@ -117,8 +115,7 @@ try:
                         st.area_chart(chart_df["Light"], color="#e040fb")
                 
                 with st.container(border=True):
-                    st.markdown("#### OCCUPANCY HISTORY")
-                    # For people, we use 'max' to see the peak occupancy in that time window
+                    st.markdown("#### LIVE OCCUPANCY HISTORY")
                     if resample_rule:
                         occ_data = filtered_df["People"].resample(resample_rule).max()
                     else:
