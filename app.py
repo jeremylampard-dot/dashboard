@@ -57,7 +57,8 @@ def load_data(url):
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-    # Clean the Status string to ensure matches work
+    
+    # Clean Status for reliable matching
     df['Status'] = df['Status'].astype(str).str.strip()
     df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
     return df
@@ -65,7 +66,7 @@ def load_data(url):
 def get_smart_status(row):
     hw_status = str(row['Status']).lower()
     people = row['People'] if pd.notna(row['People']) else 0
-    if hw_status == "in use": return "🔴 IN USE"
+    if "in use" in hw_status: return "🔴 IN USE"
     elif people > 0: return f"🟡 OCCUPIED ({int(people)})"
     else: return "🟢 AVAILABLE"
 
@@ -108,21 +109,19 @@ try:
             rule = g_map[grain]
 
             if not f_df.empty:
-                # --- NEW ALTAIR CHART WITH CONDITIONAL COLORING ---
-                st.markdown("#### 👥 OCCUPANCY (RED = IN USE)")
+                # --- ALTAIR CHART WITH UPDATED LABEL ---
+                st.markdown("#### 👥 OCCUPANCY (RED = NEAT SYSTEM IN CALL)")
                 
-                # We normalize the Status for the chart comparison
                 chart_source = f_df.copy()
                 
-                # This logic checks if 'In Use' exists in the status string
-                # We use a bar chart where color is driven by the Status column
+                # Enhanced Logic: Checks if 'in use' is present regardless of case
                 occ_chart = alt.Chart(chart_source).mark_bar().encode(
                     x=alt.X('Timestamp:T', title='Time'),
                     y=alt.Y('People:Q', title='People Count', axis=alt.Axis(tickMinStep=1)),
                     color=alt.condition(
-                        alt.datum.Status == 'In Use',
-                        alt.value('#ff4b4b'),     # Bright Red if In Use
-                        alt.value('#aa00ff')      # Signature Purple if not
+                        "test(regexp(datum.Status, '(?i)in use'))", # Case-insensitive regex match
+                        alt.value('#ff4b4b'),     # Bright Red
+                        alt.value('#aa00ff')      # Signature Purple
                     ),
                     tooltip=['Timestamp', 'People', 'Status']
                 ).properties(height=200).configure_view(strokeOpacity=0)
