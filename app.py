@@ -139,3 +139,22 @@ try:
                     with st.container(border=True):
                         st.markdown("#### TEMPERATURE (°C)")
                         st.line_chart(c_df["Temperature"], color="#b388ff")
+                with r1_2:
+                    with st.container(border=True):
+                        st.markdown("#### HUMIDITY (%)")
+                        st.line_chart(c_df["Humidity"], color="#7c4dff")
+
+                r2_1, r2_2 = st.columns(2)
+                with r2_1:
+                    with st.container(border=True):
+                        st.markdown("#### AIR QUALITY (VOC)")
+                        st.line_chart(c_df["VOC Index"], color="#651fff")
+                with r2_2:
+                    with st.container(border=True):
+                        st.markdown("#### LIGHT LEVELS (LUX)")
+                        st.bar_chart(c_df["Light"], color="#e040fb")
+            else:
+                st.warning("No data found for this selection.")
+
+except Exception as e:
+    st.error(f"SYSTEM ERROR: {e}")
