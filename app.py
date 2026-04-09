@@ -60,16 +60,33 @@ st.markdown("""
 # 2. NEAT PULSE API LOGIC (LIVE MODE)
 # ==========================================
 # 🛑 PASTE YOUR REAL KEYS HERE 🛑
-PULSE_ORG_ID = "wMjVWJM"
-PULSE_API_KEY = "ea1fe7eyJDbGllbnRJZCI6OSwiVG9rZW4iOiIzNDBjNTQ1M2U5MTkyNDgyZGU3ZTBiZjExZTMxOTg3NSJ9"
+PULSE_ORG_ID = "YOUR_ORGANIZATION_ID"
+PULSE_API_KEY = "YOUR_API_KEY"
+
+# 🛑 MAP YOUR ROOM NAMES TO NEAT ENDPOINT IDs 🛑
+# Ensure the text on the left exactly matches the room name in your Google Sheet
+ENDPOINT_MAP = {
+    "Boardroom": "YOUR_ENDPOINT_ID_HERE",
+    "Front Booth": "YOUR_ENDPOINT_ID_HERE",
+    "Huddle Space": "YOUR_ENDPOINT_ID_HERE"
+    # Add any other rooms you have...
+}
 
 def send_pulse_reboot(room_name):
-    api_url = f"https://api.pulse.neat.no/api/management/v1/devices/{room_name}/reboot"
+    # 1. Translate the friendly name to the API ID
+    endpoint_id = ENDPOINT_MAP.get(room_name)
+    
+    if not endpoint_id:
+         return False, f"Setup Error: No Endpoint ID mapped for '{room_name}' in the code."
+
+    # 2. Construct the exact URL from the documentation
+    api_url = f"https://api.pulse.neat.no/v1/orgs/{PULSE_ORG_ID}/endpoints/{endpoint_id}/reboot"
+    
     headers = {
         "Authorization": f"Bearer {PULSE_API_KEY}",
-        "X-Organization-Id": PULSE_ORG_ID,
         "Content-Type": "application/json"
     }
+    
     try:
         response = requests.post(api_url, headers=headers)
         response.raise_for_status() 
