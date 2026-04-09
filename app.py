@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 st.set_page_config(page_title="Neat London Showroom", layout="wide", page_icon="🏢")
 
 # ==========================================
-# 1. FORCED DARK MODE & CHUNKY STYLE
+# 1. FORCED DARK MODE, CHUNKY STYLE & ANIMATIONS
 # ==========================================
 st.markdown("""
 <style>
@@ -23,6 +23,25 @@ st.markdown("""
         border: 2px solid #9c27b0 !important;
         border-radius: 15px !important;
         padding: 15px !important;
+    }
+    
+    /* --- ✨ THE FUN ANIMATIONS ✨ --- */
+    /* 1. Fade & Slide Up when clicking between tabs */
+    @keyframes fadeSlideUp {
+        0% { opacity: 0; transform: translateY(20px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+    div[role="tabpanel"] {
+        animation: fadeSlideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+    
+    /* 2. Hover Lift Effect for your custom Smart Cards */
+    div[data-testid="stMarkdownContainer"] div[style*="border-radius: 15px"] {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out !important;
+    }
+    div[data-testid="stMarkdownContainer"] div[style*="border-radius: 15px"]:hover {
+        transform: translateY(-5px) !important;
+        box-shadow: 0 10px 20px rgba(156, 39, 176, 0.3) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -108,9 +127,6 @@ def render_main_dashboard():
             st.divider()
             
             st.subheader("LIVE FLEET STATUS")
-            
-            # --- THE FIX: DYNAMIC HEIGHT ---
-            # Calculates roughly 38px per row + 40px for the header to fit perfectly
             dynamic_height = (len(latest) * 38) + 40 
             
             st.dataframe(
@@ -118,7 +134,7 @@ def render_main_dashboard():
                 column_config={"Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100)},
                 hide_index=True, 
                 use_container_width=True,
-                height=dynamic_height # Injects the perfect height here!
+                height=dynamic_height
             )
 
         with tab2:
