@@ -67,7 +67,7 @@ PULSE_API_KEY = "ea1fe7eyJDbGllbnRJZCI6OSwiVG9rZW4iOiIzNDBjNTQ1M2U5MTkyNDgyZGU3Z
 ENDPOINT_MAP = {
     "Dalmore Microsoft": "47ae3b27-bb05-4c51-9de5-c2aa75ab998e",
     "Edradour": "aa7897d8-868f-4866-b3c1-b64039c10817",
-    "Barra": "aebf0451-4ad6-44ef-aa59-ee2f26c0cc38"
+    "Barra": "aebf0451-4ad6-44ef-aa59-ee2f26c0cc38",
     "Harris": "6e0f6d6b-97a5-4c2d-8c8d-286e71ea02cc"
 }
 
