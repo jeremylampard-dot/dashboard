@@ -33,7 +33,7 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
     
-    # Real-time data for April 9, 2026
+    # Static accurate update for London Today
     current_temp = 18 
     weather_cond = "Cloudy"
 
@@ -48,7 +48,8 @@ with st.sidebar:
     
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
-    if st.button("🔄 REFRESH DATA", use_container_width=True):
+    st.success("Auto-Refresh: ON (2min)")
+    if st.button("🔄 FORCE REFRESH", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -67,17 +68,14 @@ def load_data(url):
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Clean up status: empty/missing values become "available"
+    # Clean up status
     df['Status'] = df['Status'].fillna('available').astype(str).str.strip().str.lower()
     df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
     return df
 
-# --- THE FIX: BOUNCER LOGIC ---
 def get_smart_status(row):
     status_str = str(row['Status'])
     people_count = row['People'] if pd.notna(row['People']) else 0
-    
-    # Strictly check for "in use" - no loose 'contains' logic
     if status_str == "in use":
         return "🔴 IN USE"
     elif people_count > 0:
@@ -85,16 +83,19 @@ def get_smart_status(row):
     else:
         return "🟢 AVAILABLE"
 
-try:
-    df = load_data(SHEET_URL)
-    
-    if not df.empty:
-        # Wrap everything in an auto-refresh fragment
-        @st.fragment(run_every="2m")
-        def show_dashboard(df):
+# ==========================================
+# THE DASHBOARD ENGINE (AUTO-REFRESHING)
+# ==========================================
+@st.fragment(run_every="2m")
+def render_dashboard():
+    try:
+        df = load_data(SHEET_URL)
+        
+        if not df.empty:
             tab1, tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
 
             with tab1:
+                st.subheader("LIVE FLEET STATUS")
                 latest = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
                 latest['Live Status'] = latest.apply(get_smart_status, axis=1)
                 
@@ -109,6 +110,7 @@ try:
                     )
 
             with tab2:
+                # 1. Selectors
                 c_room, c_date, c_grain = st.columns([1.5, 2, 1])
                 with c_room: selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
                 with c_date: date_range = st.date_input("SELECT DATE RANGE:", [datetime.now().date() - timedelta(days=7), datetime.now().date()])
@@ -124,15 +126,49 @@ try:
 
                 if not f_df.empty:
                     resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
-                    st.markdown("#### 👥 LIVE OCCUPANCY HISTORY")
-                    st.bar_chart(f_df["People"].resample(rule).max() if rule else f_df["People"], color="#aa00ff", height=180)
+                    
+                    # 2. Key Metrics Row
+                    latest_val = f_df.iloc[-1]
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("LATEST TEMP", f"{latest_val['Temperature']:.1f}°C")
+                    m2.metric("LATEST HUMIDITY", f"{latest_val['Humidity']:.0f}%")
+                    m3.metric("LATEST VOC", f"{latest_val['VOC Index']:.0f}")
+                    m4.metric("LATEST LIGHT", f"{latest_val['Light']:.0f} lx")
+
+                    st.divider()
+
+                    # 3. Occupancy Hero (Top)
+                    st.markdown("#### 👥 OCCUPANCY HISTORY")
+                    occ_data = f_df["People"].resample(rule).max() if rule else f_df["People"]
+                    st.bar_chart(occ_data, color="#aa00ff", height=180)
                     
                     st.divider()
+
+                    # 4. Environmental Grid
                     r1_1, r1_2 = st.columns(2)
-                    with r1_1: st.line_chart(resampled["Temperature"], color="#b388ff")
-                    with r1_2: st.line_chart(resampled["Humidity"], color="#7c4dff")
+                    with r1_1:
+                        with st.container(border=True):
+                            st.markdown("#### TEMPERATURE (°C)")
+                            st.line_chart(resampled["Temperature"], color="#b388ff")
+                    with r1_2:
+                        with st.container(border=True):
+                            st.markdown("#### HUMIDITY (%)")
+                            st.line_chart(resampled["Humidity"], color="#7c4dff")
 
-        show_dashboard(df)
+                    r2_1, r2_2 = st.columns(2)
+                    with r2_1:
+                        with st.container(border=True):
+                            st.markdown("#### AIR QUALITY (VOC)")
+                            st.line_chart(resampled["VOC Index"], color="#651fff")
+                    with r2_2:
+                        with st.container(border=True):
+                            st.markdown("#### LIGHT LEVELS (LUX)")
+                            st.bar_chart(resampled["Light"], color="#e040fb")
+                else:
+                    st.warning("No data found for this selection.")
 
-except Exception as e:
-    st.error(f"SYSTEM ERROR: {e}")
+    except Exception as e:
+        st.error(f"DASHBOARD ERROR: {e}")
+
+# Run the render
+render_dashboard()
