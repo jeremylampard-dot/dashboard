@@ -25,23 +25,23 @@ st.markdown("""
         padding: 15px !important;
     }
     
-    /* --- ✨ THE FUN ANIMATIONS ✨ --- */
-    /* 1. Fade & Slide Up when clicking between tabs */
+    /* --- ✨ THE PRONOUNCED ANIMATIONS ✨ --- */
+    /* 1. Dramatic Fade & Slide Up when clicking between tabs */
     @keyframes fadeSlideUp {
-        0% { opacity: 0; transform: translateY(20px); }
+        0% { opacity: 0; transform: translateY(50px); }
         100% { opacity: 1; transform: translateY(0); }
     }
     div[role="tabpanel"] {
-        animation: fadeSlideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        animation: fadeSlideUp 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
     }
     
-    /* 2. Hover Lift Effect for your custom Smart Cards */
+    /* 2. Extreme Hover Lift & Glow for Smart Cards */
     div[data-testid="stMarkdownContainer"] div[style*="border-radius: 15px"] {
-        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out !important;
+        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease !important;
     }
     div[data-testid="stMarkdownContainer"] div[style*="border-radius: 15px"]:hover {
-        transform: translateY(-5px) !important;
-        box-shadow: 0 10px 20px rgba(156, 39, 176, 0.3) !important;
+        transform: translateY(-12px) scale(1.02) !important;
+        box-shadow: 0 20px 40px rgba(156, 39, 176, 0.6) !important;
     }
 </style>
 """, unsafe_allow_html=True)
