@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import requests
-import time
 from datetime import datetime, timedelta
 
 # --- Page Config ---
@@ -58,38 +57,48 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. NEAT PULSE API LOGIC
+# 2. NEAT PULSE API LOGIC (LIVE MODE)
 # ==========================================
-# Add your Neat Pulse credentials here
+# 🛑 PASTE YOUR REAL KEYS HERE 🛑
 PULSE_ORG_ID = "YOUR_ORGANIZATION_ID"
 PULSE_API_KEY = "YOUR_API_KEY"
 
 def send_pulse_reboot(room_name):
-    """
-    Constructs the API call to reboot a Neat device via the Pulse API.
-    """
-    # Note: Check api.pulse.neat.no/docs for the exact route. Usually, you 
-    # must map the 'room_name' to a specific Neat 'device_id' first.
     api_url = f"https://api.pulse.neat.no/api/management/v1/devices/{room_name}/reboot"
-    
     headers = {
         "Authorization": f"Bearer {PULSE_API_KEY}",
         "X-Organization-Id": PULSE_ORG_ID,
         "Content-Type": "application/json"
     }
+    try:
+        response = requests.post(api_url, headers=headers)
+        response.raise_for_status() 
+        return True, f"Success: Reboot command dispatched to {room_name}."
+    except requests.exceptions.HTTPError as http_err:
+        return False, f"API Error ({response.status_code}): {response.text}"
+    except Exception as e:
+        return False, f"Connection Error: {str(e)}"
+
+def send_pulse_power_state(room_name, action="standby"):
+    """
+    Sends a power state command to the Neat device (wakeup or standby).
+    """
+    api_url = f"https://api.pulse.neat.no/api/management/v1/devices/{room_name}/power"
+    headers = {
+        "Authorization": f"Bearer {PULSE_API_KEY}",
+        "X-Organization-Id": PULSE_ORG_ID,
+        "Content-Type": "application/json"
+    }
+    payload = {"state": action}
     
     try:
-        # --- LIVE MODE (Uncomment when keys are added) ---
-        # response = requests.post(api_url, headers=headers)
-        # response.raise_for_status()
-        # return True, "Command executed successfully."
-        
-        # --- SIMULATION MODE ---
-        time.sleep(1.5) # Simulating network latency
-        return True, f"Simulation: Reboot command sent to {room_name}."
-    
+        response = requests.post(api_url, headers=headers, json=payload)
+        response.raise_for_status() 
+        return True, f"Success: {action.upper()} command dispatched to {room_name}."
+    except requests.exceptions.HTTPError as http_err:
+        return False, f"API Error ({response.status_code}): {response.text}"
     except Exception as e:
-        return False, f"API Error: {str(e)}"
+        return False, f"Connection Error: {str(e)}"
 
 # ==========================================
 # 3. DATA LOADING & HELPERS
@@ -302,23 +311,35 @@ def render_main_dashboard():
                 ).properties(height=280)
                 st.altair_chart(heatmap, use_container_width=True)
 
-                # --- NEW: DEVICE MANAGEMENT API BUTTON ---
+                # --- NEW: CONTROL PANEL ---
                 st.divider()
                 st.markdown("#### ⚙️ REMOTE DEVICE MANAGEMENT")
-                st.caption(f"Execute management commands on the Neat hardware located in {selected_room}.")
+                st.caption(f"Execute live management commands on the Neat hardware located in **{selected_room}**.")
                 
-                c_alert, c_btn = st.columns([3, 1])
-                with c_alert:
-                    st.info("Rebooting will disconnect active calls and reload the operating system. Proceed with caution.")
-                with c_btn:
-                    # By using type="primary", it adopts our red danger CSS style defined at the top
-                    if st.button(f"🔄 REBOOT DEVICE", use_container_width=True, type="primary"):
-                        with st.spinner(f"Sending pulse command..."):
-                            success, message = send_pulse_reboot(selected_room)
-                            if success:
-                                st.success(message)
-                            else:
-                                st.error(message)
+                # Create a 3-button layout
+                c_btn1, c_btn2, c_btn3 = st.columns(3)
+                
+                with c_btn1:
+                    if st.button("☀️ WAKE DISPLAY", use_container_width=True):
+                        with st.spinner("Waking device..."):
+                            success, msg = send_pulse_power_state(selected_room, "wakeup")
+                            if success: st.success(msg)
+                            else: st.error(msg)
+                            
+                with c_btn2:
+                    if st.button("🌙 FORCE SLEEP", use_container_width=True):
+                        with st.spinner("Putting device to sleep..."):
+                            success, msg = send_pulse_power_state(selected_room, "standby")
+                            if success: st.success(msg)
+                            else: st.error(msg)
+
+                with c_btn3:
+                    # Red button styling applied via type="primary"
+                    if st.button("🔄 REBOOT DEVICE", use_container_width=True, type="primary"):
+                        with st.spinner("Sending reboot command..."):
+                            success, msg = send_pulse_reboot(selected_room)
+                            if success: st.success(msg)
+                            else: st.error(msg)
 
             else:
                 st.warning("Select a valid date range to see room data.")
