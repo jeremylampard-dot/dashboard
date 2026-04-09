@@ -25,8 +25,6 @@ st.markdown("""
         padding: 15px !important;
     }
     
-    /* --- ✨ THE PRONOUNCED ANIMATIONS ✨ --- */
-    /* 1. Dramatic Fade & Slide Up when clicking between tabs */
     @keyframes fadeSlideUp {
         0% { opacity: 0; transform: translateY(50px); }
         100% { opacity: 1; transform: translateY(0); }
@@ -35,7 +33,6 @@ st.markdown("""
         animation: fadeSlideUp 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
     }
     
-    /* 2. Extreme Hover Lift & Glow for Smart Cards */
     div[data-testid="stMarkdownContainer"] div[style*="border-radius: 15px"] {
         transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease !important;
     }
@@ -78,19 +75,90 @@ def render_smart_card(label, value, color="#9c27b0"):
     </div>
     """
 
+# Load global data once for the sidebar
+global_df = load_data(SHEET_URL)
+
 # ==========================================
-# 3. STATIC SIDEBAR 
+# 3. STATIC SIDEBAR (COMMAND CENTER)
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
     st.markdown(f"""
-    <div style="background-color: #2d303a; border: 2px solid #9c27b0; border-radius: 15px; padding: 20px; text-align: center;">
+    <div style="background-color: #2d303a; border: 2px solid #9c27b0; border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px;">
         <h1 style="margin:0; font-size: 3rem; color: #ffffff;">18°C</h1>
         <p style="margin:0; font-weight: 900; color: #9c27b0; text-transform: uppercase;">Cloudy</p>
         <hr style="border: 1px solid #404452; margin: 10px 0;">
         <p style="margin:0; font-size: 0.8rem; color: #f0f2f6;">H: 20°C | L: 5°C</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    if not global_df.empty:
+        latest_sb = global_df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
+        
+        # --- FEATURE 1: COMFORT SCORE RING ---
+        avg_t = latest_sb['Temperature'].mean(skipna=True)
+        avg_h = latest_sb['Humidity'].mean(skipna=True)
+        avg_v = latest_sb['VOC Index'].mean(skipna=True)
+        
+        # Start at 100, deduct points for bad metrics
+        penalty = 0
+        if pd.notna(avg_t): penalty += abs(avg_t - 21) * 3
+        if pd.notna(avg_h): penalty += abs(avg_h - 45) * 0.5
+        if pd.notna(avg_v): penalty += (avg_v * 0.1)
+        
+        comfort = max(0, min(100, int(100 - penalty)))
+        ring_color = "#9c27b0" if comfort >= 80 else ("#ffb300" if comfort >= 60 else "#ff4b4b")
+        
+        st.markdown("### 🔋 BUILDING COMFORT")
+        st.markdown(f"""
+        <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
+            <div style="width: 120px; height: 120px; border-radius: 50%; background: conic-gradient({ring_color} {comfort}%, #2d303a 0); display: flex; justify-content: center; align-items: center; box-shadow: 0 0 15px rgba(0,0,0,0.5);">
+                <div style="width: 90px; height: 90px; border-radius: 50%; background-color: #0e1117; display: flex; justify-content: center; align-items: center;">
+                    <h2 style="margin:0; font-size: 1.8rem; color: {ring_color};">{comfort}%</h2>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # --- FEATURE 2: TODAY'S MVP ROOM ---
+        today = pd.Timestamp.now().normalize()
+        today_df = global_df[global_df['Timestamp'] >= today]
+        
+        if not today_df.empty and today_df['People'].sum() > 0:
+            pop_room = today_df.groupby('Room')['People'].sum().idxmax()
+            st.markdown("### 🏆 TODAY'S MVP ROOM")
+            st.markdown(f"""
+            <div style="background-color: #2d303a; border-left: 5px solid #00e5ff; border-radius: 5px; padding: 10px; margin-bottom: 20px;">
+                <p style="margin:0; font-size: 0.8rem; color: #f0f2f6; text-transform: uppercase;">Highest Traffic Space</p>
+                <h4 style="margin:0; color: #ffffff;">{pop_room}</h4>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # --- FEATURE 3: LIVE ALERTS FEED ---
+        st.markdown("### 🚨 SYSTEM ALERTS")
+        alerts = []
+        for _, row in latest_sb.iterrows():
+            if pd.notna(row['VOC Index']) and row['VOC Index'] > 150:
+                alerts.append(f"⚠️ <b>{row['Room']}:</b> High VOC ({row['VOC Index']:.0f})")
+            if pd.notna(row['Temperature']) and row['Temperature'] > 26:
+                alerts.append(f"🔥 <b>{row['Room']}:</b> Too Hot ({row['Temperature']:.1f}°C)")
+            if pd.notna(row['Temperature']) and row['Temperature'] < 16:
+                alerts.append(f"❄️ <b>{row['Room']}:</b> Too Cold ({row['Temperature']:.1f}°C)")
+        
+        if not alerts:
+            st.markdown("""
+            <div style="background-color: #1e3a2f; border: 1px solid #00e676; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 20px;">
+                <p style="margin:0; color: #00e676; font-weight: bold;">🟢 ALL SYSTEMS OPTIMAL</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            for alert in alerts:
+                st.markdown(f"""
+                <div style="background-color: #4a1919; border: 1px solid #ff4b4b; border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+                    <p style="margin:0; color: #ffca28; font-size: 0.85rem;">{alert}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
     st.success("Auto-Refresh: ACTIVE (2m)")
