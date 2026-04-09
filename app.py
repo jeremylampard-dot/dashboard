@@ -18,12 +18,6 @@ st.markdown("""
         color: #ffffff !important;
         text-transform: uppercase;
     }
-    [data-testid="stMetric"] {
-        background-color: #2d303a !important;
-        border: 2px solid #9c27b0 !important;
-        border-radius: 15px !important;
-        padding: 15px !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,8 +45,18 @@ def get_smart_status(row):
         return f"🟡 OCCUPIED ({int(people)})"
     return "🟢 AVAILABLE"
 
+# --- NEW: DYNAMIC SMART CARD RENDERER ---
+def render_smart_card(label, value, color="#9c27b0"):
+    # Default is Purple (#9c27b0), but we can pass in Amber, Red, or Blue
+    return f"""
+    <div style="background-color: #2d303a; border: 2px solid {color}; border-radius: 15px; padding: 15px; margin-bottom: 15px;">
+        <p style="margin:0; font-size: 0.9rem; font-weight: 900; color: #f0f2f6; text-transform: uppercase;">{label}</p>
+        <h2 style="margin:0; font-size: 2.2rem; font-weight: 900; color: {color};">{value}</h2>
+    </div>
+    """
+
 # ==========================================
-# 3. STATIC SIDEBAR
+# 3. STATIC SIDEBAR 
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
@@ -72,7 +76,7 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 4. DASHBOARD ENGINE (Auto-Refreshing)
+# 4. DASHBOARD ENGINE 
 # ==========================================
 @st.fragment(run_every="2m")
 def render_main_dashboard():
@@ -83,24 +87,23 @@ def render_main_dashboard():
         tab1, tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
 
         with tab1:
-            # Prepare latest data
             latest = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
             latest['Live Status'] = latest.apply(get_smart_status, axis=1)
             
-            # --- NEW HERO BANNER (Total Showroom Live Counters) ---
             total_people = int(latest['People'].sum(skipna=True))
             rooms_available = int((latest['Live Status'] == "🟢 AVAILABLE").sum())
             avg_voc = latest['VOC Index'].mean(skipna=True)
             
-            # Use our custom chunky CSS metrics
+            # Smart Alert Logic for the Building-wide VOC
+            b_voc_color = "#ff4b4b" if avg_voc > 250 else ("#ffb300" if avg_voc > 150 else "#9c27b0")
+            
             h1, h2, h3 = st.columns(3)
-            h1.metric("TOTAL PEOPLE IN SHOWROOM", f"{total_people} 👥")
-            h2.metric("ROOMS CURRENTLY AVAILABLE", f"{rooms_available} 🟢")
-            h3.metric("BUILDING AIR QUALITY (VOC)", f"{avg_voc:.0f} 🌬️")
+            h1.markdown(render_smart_card("TOTAL PEOPLE IN SHOWROOM", f"{total_people} 👥"), unsafe_allow_html=True)
+            h2.markdown(render_smart_card("ROOMS CURRENTLY AVAILABLE", f"{rooms_available} 🟢"), unsafe_allow_html=True)
+            h3.markdown(render_smart_card("BUILDING AIR QUALITY (VOC)", f"{avg_voc:.0f} 🌬️", b_voc_color), unsafe_allow_html=True)
             
             st.divider()
             
-            # --- Live Fleet Status Table ---
             st.subheader("LIVE FLEET STATUS")
             st.dataframe(
                 latest[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
@@ -125,11 +128,23 @@ def render_main_dashboard():
                 resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
                 
                 latest_val = f_df.iloc[-1]
+                
+                # --- DYNAMIC THRESHOLD LOGIC ---
+                v_voc = latest_val['VOC Index']
+                voc_col = "#ff4b4b" if v_voc > 250 else ("#ffb300" if v_voc > 150 else "#9c27b0")
+                
+                v_tmp = latest_val['Temperature']
+                tmp_col = "#ff4b4b" if v_tmp > 26 else ("#00e5ff" if v_tmp < 16 else "#9c27b0")
+                
+                v_hum = latest_val['Humidity']
+                hum_col = "#ffb300" if (v_hum < 30 or v_hum > 60) else "#9c27b0"
+
+                # Render dynamic cards
                 m1, m2, m3, m4 = st.columns(4)
-                m1.metric("LATEST TEMP", f"{latest_val['Temperature']:.1f}°C")
-                m2.metric("LATEST HUMIDITY", f"{latest_val['Humidity']:.0f}%")
-                m3.metric("LATEST VOC", f"{latest_val['VOC Index']:.0f}")
-                m4.metric("LATEST LIGHT", f"{latest_val['Light']:.0f} lx")
+                m1.markdown(render_smart_card("LATEST TEMP", f"{v_tmp:.1f}°C", tmp_col), unsafe_allow_html=True)
+                m2.markdown(render_smart_card("LATEST HUMIDITY", f"{v_hum:.0f}%", hum_col), unsafe_allow_html=True)
+                m3.markdown(render_smart_card("LATEST VOC", f"{v_voc:.0f}", voc_col), unsafe_allow_html=True)
+                m4.markdown(render_smart_card("LATEST LIGHT", f"{latest_val['Light']:.0f} lx"), unsafe_allow_html=True) # Light stays purple
                 
                 st.divider()
 
@@ -175,5 +190,4 @@ def render_main_dashboard():
             else:
                 st.warning("Select a valid date range to see room data.")
 
-# Run the fragment
 render_main_dashboard()
