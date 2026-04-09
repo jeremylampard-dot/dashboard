@@ -112,17 +112,46 @@ def render_main_dashboard():
                 rule = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D"}[grain]
                 resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
                 
+                # --- THE RESTORED LATEST METRICS ROW ---
+                latest_val = f_df.iloc[-1]
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("LATEST TEMP", f"{latest_val['Temperature']:.1f}°C")
+                m2.metric("LATEST HUMIDITY", f"{latest_val['Humidity']:.0f}%")
+                m3.metric("LATEST VOC", f"{latest_val['VOC Index']:.0f}")
+                m4.metric("LATEST LIGHT", f"{latest_val['Light']:.0f} lx")
+                
+                st.divider()
+
                 # Top Chart: Occupancy
                 st.markdown("#### 👥 OCCUPANCY HISTORY")
                 st.bar_chart(f_df["People"].resample(rule).max() if rule else f_df["People"], color="#aa00ff", height=180)
                 
-                # Bottom Charts: Environment
                 st.divider()
-                r1_1, r1_2 = st.columns(2)
-                with r1_1: st.line_chart(resampled["Temperature"], color="#b388ff")
-                with r1_2: st.line_chart(resampled["Humidity"], color="#7c4dff")
 
-                # Heatmap Section
+                # --- THE RESTORED 4-PANEL ENVIRONMENT GRID ---
+                r1_1, r1_2 = st.columns(2)
+                with r1_1:
+                    with st.container(border=True):
+                        st.markdown("#### TEMPERATURE (°C)")
+                        st.line_chart(resampled["Temperature"], color="#b388ff")
+                with r1_2:
+                    with st.container(border=True):
+                        st.markdown("#### HUMIDITY (%)")
+                        st.line_chart(resampled["Humidity"], color="#7c4dff")
+
+                r2_1, r2_2 = st.columns(2)
+                with r2_1:
+                    with st.container(border=True):
+                        st.markdown("#### AIR QUALITY (VOC)")
+                        st.line_chart(resampled["VOC Index"], color="#651fff")
+                with r2_2:
+                    with st.container(border=True):
+                        st.markdown("#### LIGHT LEVELS (LUX)")
+                        st.bar_chart(resampled["Light"], color="#e040fb")
+
+                st.divider()
+
+                # --- THE HEATMAP ---
                 st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
                 h_data = f_df.copy().reset_index()
                 h_data['Hour'] = h_data['Timestamp'].dt.hour
