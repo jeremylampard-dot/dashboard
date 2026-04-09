@@ -60,8 +60,8 @@ st.markdown("""
 # 2. NEAT PULSE API LOGIC (LIVE MODE)
 # ==========================================
 # 🛑 PASTE YOUR REAL KEYS HERE 🛑
-PULSE_ORG_ID = "YOUR_ORGANIZATION_ID"
-PULSE_API_KEY = "YOUR_API_KEY"
+PULSE_ORG_ID = "wMjVWJM"
+PULSE_API_KEY = "ea1fe7eyJDbGllbnRJZCI6OSwiVG9rZW4iOiIzNDBjNTQ1M2U5MTkyNDgyZGU3ZTBiZjExZTMxOTg3NSJ9"
 
 def send_pulse_reboot(room_name):
     api_url = f"https://api.pulse.neat.no/api/management/v1/devices/{room_name}/reboot"
