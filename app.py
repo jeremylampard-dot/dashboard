@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import requests
+import time
 from datetime import datetime, timedelta
 
 # --- Page Config ---
@@ -40,11 +42,57 @@ st.markdown("""
         transform: translateY(-12px) scale(1.02) !important;
         box-shadow: 0 20px 40px rgba(156, 39, 176, 0.6) !important;
     }
+    
+    /* Style for the Danger/Reboot Button */
+    button[kind="primary"] {
+        background-color: #ff4b4b !important;
+        color: white !important;
+        font-weight: 900 !important;
+        border: none !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #ff2a2a !important;
+        box-shadow: 0 0 15px rgba(255, 75, 75, 0.5) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. DATA LOADING & HELPERS
+# 2. NEAT PULSE API LOGIC
+# ==========================================
+# Add your Neat Pulse credentials here
+PULSE_ORG_ID = "YOUR_ORGANIZATION_ID"
+PULSE_API_KEY = "YOUR_API_KEY"
+
+def send_pulse_reboot(room_name):
+    """
+    Constructs the API call to reboot a Neat device via the Pulse API.
+    """
+    # Note: Check api.pulse.neat.no/docs for the exact route. Usually, you 
+    # must map the 'room_name' to a specific Neat 'device_id' first.
+    api_url = f"https://api.pulse.neat.no/api/management/v1/devices/{room_name}/reboot"
+    
+    headers = {
+        "Authorization": f"Bearer {PULSE_API_KEY}",
+        "X-Organization-Id": PULSE_ORG_ID,
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        # --- LIVE MODE (Uncomment when keys are added) ---
+        # response = requests.post(api_url, headers=headers)
+        # response.raise_for_status()
+        # return True, "Command executed successfully."
+        
+        # --- SIMULATION MODE ---
+        time.sleep(1.5) # Simulating network latency
+        return True, f"Simulation: Reboot command sent to {room_name}."
+    
+    except Exception as e:
+        return False, f"API Error: {str(e)}"
+
+# ==========================================
+# 3. DATA LOADING & HELPERS
 # ==========================================
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
@@ -75,11 +123,10 @@ def render_smart_card(label, value, color="#9c27b0"):
     </div>
     """
 
-# Load global data once for the sidebar
 global_df = load_data(SHEET_URL)
 
 # ==========================================
-# 3. STATIC SIDEBAR (COMMAND CENTER)
+# 4. STATIC SIDEBAR (COMMAND CENTER)
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
@@ -95,17 +142,14 @@ with st.sidebar:
     if not global_df.empty:
         latest_sb = global_df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
         
-        # --- FEATURE 1: COMFORT SCORE RING ---
+        # COMFORT RING
         avg_t = latest_sb['Temperature'].mean(skipna=True)
         avg_h = latest_sb['Humidity'].mean(skipna=True)
         avg_v = latest_sb['VOC Index'].mean(skipna=True)
-        
-        # Start at 100, deduct points for bad metrics
         penalty = 0
         if pd.notna(avg_t): penalty += abs(avg_t - 21) * 3
         if pd.notna(avg_h): penalty += abs(avg_h - 45) * 0.5
         if pd.notna(avg_v): penalty += (avg_v * 0.1)
-        
         comfort = max(0, min(100, int(100 - penalty)))
         ring_color = "#9c27b0" if comfort >= 80 else ("#ffb300" if comfort >= 60 else "#ff4b4b")
         
@@ -120,13 +164,12 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
 
-        # --- FEATURE 2: TODAY'S MVP ROOM ---
+        # MVP ROOM
         today = pd.Timestamp.now().normalize()
         today_df = global_df[global_df['Timestamp'] >= today]
-        
         if not today_df.empty and today_df['People'].sum() > 0:
             pop_room = today_df.groupby('Room')['People'].sum().idxmax()
-            st.markdown("### 🏆 TODAY'S MVP ROOM")
+            st.markdown("### 🏆 TODAY'S MVP")
             st.markdown(f"""
             <div style="background-color: #2d303a; border-left: 5px solid #00e5ff; border-radius: 5px; padding: 10px; margin-bottom: 20px;">
                 <p style="margin:0; font-size: 0.8rem; color: #f0f2f6; text-transform: uppercase;">Highest Traffic Space</p>
@@ -134,16 +177,12 @@ with st.sidebar:
             </div>
             """, unsafe_allow_html=True)
 
-        # --- FEATURE 3: LIVE ALERTS FEED ---
+        # ALERTS
         st.markdown("### 🚨 SYSTEM ALERTS")
         alerts = []
         for _, row in latest_sb.iterrows():
-            if pd.notna(row['VOC Index']) and row['VOC Index'] > 150:
-                alerts.append(f"⚠️ <b>{row['Room']}:</b> High VOC ({row['VOC Index']:.0f})")
-            if pd.notna(row['Temperature']) and row['Temperature'] > 26:
-                alerts.append(f"🔥 <b>{row['Room']}:</b> Too Hot ({row['Temperature']:.1f}°C)")
-            if pd.notna(row['Temperature']) and row['Temperature'] < 16:
-                alerts.append(f"❄️ <b>{row['Room']}:</b> Too Cold ({row['Temperature']:.1f}°C)")
+            if pd.notna(row['VOC Index']) and row['VOC Index'] > 150: alerts.append(f"⚠️ <b>{row['Room']}:</b> High VOC")
+            if pd.notna(row['Temperature']) and row['Temperature'] > 26: alerts.append(f"🔥 <b>{row['Room']}:</b> Too Hot")
         
         if not alerts:
             st.markdown("""
@@ -153,11 +192,7 @@ with st.sidebar:
             """, unsafe_allow_html=True)
         else:
             for alert in alerts:
-                st.markdown(f"""
-                <div style="background-color: #4a1919; border: 1px solid #ff4b4b; border-radius: 8px; padding: 8px; margin-bottom: 8px;">
-                    <p style="margin:0; color: #ffca28; font-size: 0.85rem;">{alert}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"<div style='background-color: #4a1919; border: 1px solid #ff4b4b; border-radius: 8px; padding: 8px; margin-bottom: 8px;'><p style='margin:0; color: #ffca28; font-size: 0.85rem;'>{alert}</p></div>", unsafe_allow_html=True)
 
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
@@ -167,7 +202,7 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 4. DASHBOARD ENGINE 
+# 5. DASHBOARD ENGINE 
 # ==========================================
 @st.fragment(run_every="2m")
 def render_main_dashboard():
@@ -184,7 +219,6 @@ def render_main_dashboard():
             total_people = int(latest['People'].sum(skipna=True))
             rooms_available = int((latest['Live Status'] == "🟢 AVAILABLE").sum())
             avg_voc = latest['VOC Index'].mean(skipna=True)
-            
             b_voc_color = "#ff4b4b" if avg_voc > 250 else ("#ffb300" if avg_voc > 150 else "#9c27b0")
             
             h1, h2, h3 = st.columns(3)
@@ -193,16 +227,12 @@ def render_main_dashboard():
             h3.markdown(render_smart_card("BUILDING AIR QUALITY (VOC)", f"{avg_voc:.0f} 🌬️", b_voc_color), unsafe_allow_html=True)
             
             st.divider()
-            
             st.subheader("LIVE FLEET STATUS")
             dynamic_height = (len(latest) * 38) + 40 
-            
             st.dataframe(
                 latest[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
                 column_config={"Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100)},
-                hide_index=True, 
-                use_container_width=True,
-                height=dynamic_height
+                hide_index=True, use_container_width=True, height=dynamic_height
             )
 
         with tab2:
@@ -222,14 +252,9 @@ def render_main_dashboard():
                 resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
                 
                 latest_val = f_df.iloc[-1]
-                
-                v_voc = latest_val['VOC Index']
+                v_voc, v_tmp, v_hum = latest_val['VOC Index'], latest_val['Temperature'], latest_val['Humidity']
                 voc_col = "#ff4b4b" if v_voc > 250 else ("#ffb300" if v_voc > 150 else "#9c27b0")
-                
-                v_tmp = latest_val['Temperature']
                 tmp_col = "#ff4b4b" if v_tmp > 26 else ("#00e5ff" if v_tmp < 16 else "#9c27b0")
-                
-                v_hum = latest_val['Humidity']
                 hum_col = "#ffb300" if (v_hum < 30 or v_hum > 60) else "#9c27b0"
 
                 m1, m2, m3, m4 = st.columns(4)
@@ -239,12 +264,10 @@ def render_main_dashboard():
                 m4.markdown(render_smart_card("LATEST LIGHT", f"{latest_val['Light']:.0f} lx"), unsafe_allow_html=True)
                 
                 st.divider()
-
                 st.markdown("#### 👥 OCCUPANCY HISTORY")
                 st.bar_chart(f_df["People"].resample(rule).max() if rule else f_df["People"], color="#aa00ff", height=180)
                 
                 st.divider()
-
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     with st.container(border=True):
@@ -266,7 +289,6 @@ def render_main_dashboard():
                         st.bar_chart(resampled["Light"], color="#e040fb")
 
                 st.divider()
-
                 st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
                 h_data = f_df.copy().reset_index()
                 h_data['Hour'] = h_data['Timestamp'].dt.hour
@@ -279,6 +301,25 @@ def render_main_dashboard():
                     tooltip=['Day', 'Hour', 'max(People)']
                 ).properties(height=280)
                 st.altair_chart(heatmap, use_container_width=True)
+
+                # --- NEW: DEVICE MANAGEMENT API BUTTON ---
+                st.divider()
+                st.markdown("#### ⚙️ REMOTE DEVICE MANAGEMENT")
+                st.caption(f"Execute management commands on the Neat hardware located in {selected_room}.")
+                
+                c_alert, c_btn = st.columns([3, 1])
+                with c_alert:
+                    st.info("Rebooting will disconnect active calls and reload the operating system. Proceed with caution.")
+                with c_btn:
+                    # By using type="primary", it adopts our red danger CSS style defined at the top
+                    if st.button(f"🔄 REBOOT DEVICE", use_container_width=True, type="primary"):
+                        with st.spinner(f"Sending pulse command..."):
+                            success, message = send_pulse_reboot(selected_room)
+                            if success:
+                                st.success(message)
+                            else:
+                                st.error(message)
+
             else:
                 st.warning("Select a valid date range to see room data.")
 
