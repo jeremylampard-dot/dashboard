@@ -18,6 +18,12 @@ st.markdown("""
         color: #ffffff !important;
         text-transform: uppercase;
     }
+    [data-testid="stMetric"] {
+        background-color: #2d303a !important;
+        border: 2px solid #9c27b0 !important;
+        border-radius: 15px !important;
+        padding: 15px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -45,9 +51,7 @@ def get_smart_status(row):
         return f"🟡 OCCUPIED ({int(people)})"
     return "🟢 AVAILABLE"
 
-# --- NEW: DYNAMIC SMART CARD RENDERER ---
 def render_smart_card(label, value, color="#9c27b0"):
-    # Default is Purple (#9c27b0), but we can pass in Amber, Red, or Blue
     return f"""
     <div style="background-color: #2d303a; border: 2px solid {color}; border-radius: 15px; padding: 15px; margin-bottom: 15px;">
         <p style="margin:0; font-size: 0.9rem; font-weight: 900; color: #f0f2f6; text-transform: uppercase;">{label}</p>
@@ -94,7 +98,6 @@ def render_main_dashboard():
             rooms_available = int((latest['Live Status'] == "🟢 AVAILABLE").sum())
             avg_voc = latest['VOC Index'].mean(skipna=True)
             
-            # Smart Alert Logic for the Building-wide VOC
             b_voc_color = "#ff4b4b" if avg_voc > 250 else ("#ffb300" if avg_voc > 150 else "#9c27b0")
             
             h1, h2, h3 = st.columns(3)
@@ -105,10 +108,17 @@ def render_main_dashboard():
             st.divider()
             
             st.subheader("LIVE FLEET STATUS")
+            
+            # --- THE FIX: DYNAMIC HEIGHT ---
+            # Calculates roughly 38px per row + 40px for the header to fit perfectly
+            dynamic_height = (len(latest) * 38) + 40 
+            
             st.dataframe(
                 latest[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
                 column_config={"Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100)},
-                hide_index=True, use_container_width=True
+                hide_index=True, 
+                use_container_width=True,
+                height=dynamic_height # Injects the perfect height here!
             )
 
         with tab2:
@@ -129,7 +139,6 @@ def render_main_dashboard():
                 
                 latest_val = f_df.iloc[-1]
                 
-                # --- DYNAMIC THRESHOLD LOGIC ---
                 v_voc = latest_val['VOC Index']
                 voc_col = "#ff4b4b" if v_voc > 250 else ("#ffb300" if v_voc > 150 else "#9c27b0")
                 
@@ -139,12 +148,11 @@ def render_main_dashboard():
                 v_hum = latest_val['Humidity']
                 hum_col = "#ffb300" if (v_hum < 30 or v_hum > 60) else "#9c27b0"
 
-                # Render dynamic cards
                 m1, m2, m3, m4 = st.columns(4)
                 m1.markdown(render_smart_card("LATEST TEMP", f"{v_tmp:.1f}°C", tmp_col), unsafe_allow_html=True)
                 m2.markdown(render_smart_card("LATEST HUMIDITY", f"{v_hum:.0f}%", hum_col), unsafe_allow_html=True)
                 m3.markdown(render_smart_card("LATEST VOC", f"{v_voc:.0f}", voc_col), unsafe_allow_html=True)
-                m4.markdown(render_smart_card("LATEST LIGHT", f"{latest_val['Light']:.0f} lx"), unsafe_allow_html=True) # Light stays purple
+                m4.markdown(render_smart_card("LATEST LIGHT", f"{latest_val['Light']:.0f} lx"), unsafe_allow_html=True)
                 
                 st.divider()
 
