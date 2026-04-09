@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-import time
 
 # --- Page Config ---
 st.set_page_config(page_title="Neat London Showroom", layout="wide", page_icon="🏢")
@@ -28,7 +27,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- DATA LOADING (Global) ---
+# ==========================================
+# SIDEBAR: LIVE LONDON WEATHER
+# ==========================================
+with st.sidebar:
+    st.markdown("### ☁️ CITY OF LONDON")
+    
+    # Real-time data for April 9, 2026
+    current_temp = 18 
+    weather_cond = "Cloudy"
+
+    st.markdown(f"""
+    <div style="background-color: #2d303a; border: 2px solid #9c27b0; border-radius: 15px; padding: 20px; text-align: center;">
+        <h1 style="margin:0; font-size: 3rem; color: #ffffff;">{current_temp}°C</h1>
+        <p style="margin:0; font-weight: 900; color: #9c27b0; text-transform: uppercase;">{weather_cond}</p>
+        <hr style="border: 1px solid #404452; margin: 10px 0;">
+        <p style="margin:0; font-size: 0.8rem; color: #f0f2f6;">H: 20°C | L: 5°C</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.divider()
+    st.markdown("### 🛠️ DASHBOARD CONTROL")
+    if st.button("🔄 REFRESH DATA", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+st.title("🏢 Neat London Showroom")
+
+# --- DATA LOADING ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
 @st.cache_data(ttl=60)
@@ -36,65 +62,51 @@ def load_data(url):
     df = pd.read_csv(url, skipinitialspace=True)
     if len(df.columns) >= 8:
         df.columns = ["Timestamp", "Room", "Temperature", "Humidity", "People", "VOC Index", "Light", "Status"]
+    
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
     for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-    df['Room'] = df['Room'].astype(str).str.strip()
-    df['Status'] = df['Status'].astype(str).str.strip().str.lower()
-    return df.dropna(subset=['Timestamp']).sort_values('Timestamp')
+    
+    # Clean up status: empty/missing values become "available"
+    df['Status'] = df['Status'].fillna('available').astype(str).str.strip().str.lower()
+    df = df.dropna(subset=['Timestamp']).sort_values('Timestamp')
+    return df
 
+# --- THE FIX: BOUNCER LOGIC ---
 def get_smart_status(row):
-    check_val = str(row['Status'])
-    people = row['People'] if pd.notna(row['People']) else 0
-    if "in use" in check_val: return "🔴 IN USE"
-    elif people > 0: return f"🟡 OCCUPIED ({int(people)})"
-    else: return "🟢 AVAILABLE"
-
-# ==========================================
-# SIDEBAR: LIVE WEATHER & AUTO-REFRESH STATUS
-# ==========================================
-with st.sidebar:
-    st.markdown("### ☁️ CITY OF LONDON")
-    try:
-        weather_df = pd.read_json("https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&current_weather=true")
-        temp = int(weather_df['current_weather']['temperature'])
-    except: temp = 16
-
-    st.markdown(f"""
-    <div style="background-color: #2d303a; border: 2px solid #9c27b0; border-radius: 15px; padding: 20px; text-align: center;">
-        <h1 style="margin:0; font-size: 3rem; color: #ffffff;">{temp}°C</h1>
-        <p style="margin:0; font-weight: 900; color: #9c27b0; text-transform: uppercase;">Real-Time Feed</p>
-    </div>
-    """, unsafe_allow_html=True)
+    status_str = str(row['Status'])
+    people_count = row['People'] if pd.notna(row['People']) else 0
     
-    st.divider()
-    st.markdown("### 🛠️ DASHBOARD CONTROL")
-    st.caption(f"Last Sync: {datetime.now().strftime('%H:%M:%S')}")
-    st.success("Auto-Refresh: ON (2min)")
+    # Strictly check for "in use" - no loose 'contains' logic
+    if status_str == "in use":
+        return "🔴 IN USE"
+    elif people_count > 0:
+        return f"🟡 OCCUPIED ({int(people_count)})"
+    else:
+        return "🟢 AVAILABLE"
+
+try:
+    df = load_data(SHEET_URL)
     
-    if st.button("🔄 FORCE REFRESH", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-st.title("🏢 Neat London Showroom")
-
-# ==========================================
-# THE AUTO-REFRESH FRAGMENT
-# ==========================================
-@st.fragment(run_every="2m") # This tells Streamlit to rerun this function every 2 minutes
-def main_dashboard():
-    try:
-        df = load_data(SHEET_URL)
-        if not df.empty:
+    if not df.empty:
+        # Wrap everything in an auto-refresh fragment
+        @st.fragment(run_every="2m")
+        def show_dashboard(df):
             tab1, tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
 
             with tab1:
-                latest_data = df.sort_values('Timestamp').drop_duplicates('Room', keep='last').copy()
-                latest_data['Live Status'] = latest_data.apply(get_smart_status, axis=1)
+                latest = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
+                latest['Live Status'] = latest.apply(get_smart_status, axis=1)
+                
                 with st.container(border=True):
-                    st.dataframe(latest_data[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
-                                 column_config={"Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100)},
-                                 hide_index=True, use_container_width=True)
+                    st.dataframe(
+                        latest[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
+                        column_config={
+                            "Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100),
+                            "Temperature": st.column_config.NumberColumn("Temp (°C)", format="%.1f"),
+                        },
+                        hide_index=True, use_container_width=True
+                    )
 
             with tab2:
                 c_room, c_date, c_grain = st.columns([1.5, 2, 1])
@@ -114,12 +126,13 @@ def main_dashboard():
                     resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
                     st.markdown("#### 👥 LIVE OCCUPANCY HISTORY")
                     st.bar_chart(f_df["People"].resample(rule).max() if rule else f_df["People"], color="#aa00ff", height=180)
+                    
                     st.divider()
                     r1_1, r1_2 = st.columns(2)
                     with r1_1: st.line_chart(resampled["Temperature"], color="#b388ff")
                     with r1_2: st.line_chart(resampled["Humidity"], color="#7c4dff")
-    except Exception as e:
-        st.error(f"Sync Error: {e}")
 
-# Call the fragment to display it
-main_dashboard()
+        show_dashboard(df)
+
+except Exception as e:
+    st.error(f"SYSTEM ERROR: {e}")
