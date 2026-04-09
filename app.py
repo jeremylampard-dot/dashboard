@@ -104,4 +104,22 @@ def main_dashboard():
 
                 f_df = df[df['Room'] == selected_room].copy()
                 if len(date_range) == 2:
-                    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) + timedelta(days=1
+                    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) + timedelta(days=1)
+                    f_df = f_df[(f_df['Timestamp'] >= start) & (f_df['Timestamp'] < end)]
+                
+                f_df = f_df.set_index("Timestamp")
+                rule = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D", "Weekly Avg": "W"}[grain]
+
+                if not f_df.empty:
+                    resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
+                    st.markdown("#### 👥 LIVE OCCUPANCY HISTORY")
+                    st.bar_chart(f_df["People"].resample(rule).max() if rule else f_df["People"], color="#aa00ff", height=180)
+                    st.divider()
+                    r1_1, r1_2 = st.columns(2)
+                    with r1_1: st.line_chart(resampled["Temperature"], color="#b388ff")
+                    with r1_2: st.line_chart(resampled["Humidity"], color="#7c4dff")
+    except Exception as e:
+        st.error(f"Sync Error: {e}")
+
+# Call the fragment to display it
+main_dashboard()
