@@ -2,10 +2,15 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import requests
+import time
 from datetime import datetime, timedelta
 
 # --- Page Config ---
 st.set_page_config(page_title="Neat London Showroom", layout="wide", page_icon="🏢")
+
+# --- Initialize Kiosk State ---
+if 'kiosk_idx' not in st.session_state:
+    st.session_state.kiosk_idx = 0
 
 # ==========================================
 # 1. FORCED DARK MODE, CHUNKY STYLE & ANIMATIONS
@@ -25,6 +30,9 @@ st.markdown("""
         border-radius: 15px !important;
         padding: 15px !important;
     }
+    
+    /* Hide Streamlit 'Running' indicator for seamless Kiosk Mode */
+    [data-testid="stStatusWidget"] { visibility: hidden !important; }
     
     @keyframes fadeSlideUp {
         0% { opacity: 0; transform: translateY(50px); }
@@ -72,45 +80,28 @@ ENDPOINT_MAP = {
 }
 
 def send_pulse_reboot(room_name):
-    """Sends a direct reboot command to the target Endpoint."""
     endpoint_id = ENDPOINT_MAP.get(room_name)
-    if not endpoint_id:
-         return False, f"Setup Error: No Endpoint ID mapped for '{room_name}'."
-
+    if not endpoint_id: return False, f"Setup Error: No Endpoint ID mapped for '{room_name}'."
     api_url = f"https://api.pulse.neat.no/v1/orgs/{PULSE_ORG_ID}/endpoints/{endpoint_id}/reboot"
     headers = {"Authorization": f"Bearer {PULSE_API_KEY}", "Content-Type": "application/json"}
-    
     try:
         response = requests.post(api_url, headers=headers)
         response.raise_for_status() 
         return True, f"Success: Reboot command dispatched to {room_name}."
-    except requests.exceptions.HTTPError as http_err:
-        return False, f"API Error ({response.status_code}): {response.text}"
-    except Exception as e:
-        return False, f"Connection Error: {str(e)}"
+    except requests.exceptions.HTTPError as http_err: return False, f"API Error ({response.status_code}): {response.text}"
+    except Exception as e: return False, f"Connection Error: {str(e)}"
 
 def apply_neat_config(room_name, config_payload):
-    """Pushes a dynamic deviceConfig payload to the target Endpoint."""
     endpoint_id = ENDPOINT_MAP.get(room_name)
-    if not endpoint_id:
-         return False, f"Setup Error: No Endpoint ID mapped for '{room_name}'."
-
+    if not endpoint_id: return False, f"Setup Error: No Endpoint ID mapped for '{room_name}'."
     api_url = f"https://api.pulse.neat.no/v1/orgs/{PULSE_ORG_ID}/endpoints/{endpoint_id}/config"
-    headers = {
-        "Authorization": f"Bearer {PULSE_API_KEY}",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-    }
-    payload = {"deviceConfig": config_payload}
-    
+    headers = {"Authorization": f"Bearer {PULSE_API_KEY}", "Accept": "application/json", "Content-Type": "application/json"}
     try:
-        response = requests.post(api_url, headers=headers, json=payload)
+        response = requests.post(api_url, headers=headers, json={"deviceConfig": config_payload})
         response.raise_for_status() 
         return True, f"Success: Config applied to {room_name}."
-    except requests.exceptions.HTTPError as http_err:
-        return False, f"API Error ({response.status_code}): {response.text}"
-    except Exception as e:
-        return False, f"Connection Error: {str(e)}"
+    except requests.exceptions.HTTPError as http_err: return False, f"API Error ({response.status_code}): {response.text}"
+    except Exception as e: return False, f"Connection Error: {str(e)}"
 
 # ==========================================
 # 3. DATA LOADING & HELPERS
@@ -120,20 +111,16 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSE
 @st.cache_data(ttl=60)
 def load_data(url):
     df = pd.read_csv(url, skipinitialspace=True)
-    if len(df.columns) >= 8:
-        df.columns = ["Timestamp", "Room", "Temperature", "Humidity", "People", "VOC Index", "Light", "Status"]
+    if len(df.columns) >= 8: df.columns = ["Timestamp", "Room", "Temperature", "Humidity", "People", "VOC Index", "Light", "Status"]
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-    for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+    for col in ["Temperature", "Humidity", "People", "VOC Index", "Light"]: df[col] = pd.to_numeric(df[col], errors='coerce')
     df['Status'] = df['Status'].fillna('available').astype(str).str.strip().str.lower()
     return df.dropna(subset=['Timestamp']).sort_values('Timestamp')
 
 def get_smart_status(row):
-    if str(row['Status']) == "in use":
-        return "🔴 IN USE"
+    if str(row['Status']) == "in use": return "🔴 IN USE"
     people = row['People'] if pd.notna(row['People']) else 0
-    if people > 0:
-        return f"🟡 OCCUPIED ({int(people)})"
+    if people > 0: return f"🟡 OCCUPIED ({int(people)})"
     return "🟢 AVAILABLE"
 
 def render_smart_card(label, value, color="#9c27b0"):
@@ -144,20 +131,14 @@ def render_smart_card(label, value, color="#9c27b0"):
     </div>
     """
 
-# Helper to generate interactive Altair charts
 def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_scale_zero=False):
     base = alt.Chart(data).encode(
         x=alt.X('Timestamp:T', title=''),
         y=alt.Y(f'{y_col}:Q', title=title, scale=alt.Scale(zero=y_scale_zero)),
-        tooltip=[
-            alt.Tooltip('Timestamp:T', format='%Y-%m-%d %H:%M', title='Time'), 
-            alt.Tooltip(f'{y_col}:Q', format='.1f', title=y_col)
-        ]
+        tooltip=[alt.Tooltip('Timestamp:T', format='%Y-%m-%d %H:%M', title='Time'), alt.Tooltip(f'{y_col}:Q', format='.1f', title=y_col)]
     )
-    if chart_type == 'line':
-        return base.mark_line(color=color, strokeWidth=3).interactive()
-    else:
-        return base.mark_bar(color=color).interactive()
+    if chart_type == 'line': return base.mark_line(color=color, strokeWidth=3).interactive()
+    else: return base.mark_bar(color=color).interactive()
 
 global_df = load_data(SHEET_URL)
 
@@ -178,14 +159,8 @@ with st.sidebar:
     if not global_df.empty:
         latest_sb = global_df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
         
-        # COMFORT RING
-        avg_t = latest_sb['Temperature'].mean(skipna=True)
-        avg_h = latest_sb['Humidity'].mean(skipna=True)
-        avg_v = latest_sb['VOC Index'].mean(skipna=True)
-        penalty = 0
-        if pd.notna(avg_t): penalty += abs(avg_t - 21) * 3
-        if pd.notna(avg_h): penalty += abs(avg_h - 45) * 0.5
-        if pd.notna(avg_v): penalty += (avg_v * 0.1)
+        avg_t, avg_h, avg_v = latest_sb['Temperature'].mean(skipna=True), latest_sb['Humidity'].mean(skipna=True), latest_sb['VOC Index'].mean(skipna=True)
+        penalty = sum([abs(avg_t - 21) * 3 if pd.notna(avg_t) else 0, abs(avg_h - 45) * 0.5 if pd.notna(avg_h) else 0, (avg_v * 0.1) if pd.notna(avg_v) else 0])
         comfort = max(0, min(100, int(100 - penalty)))
         ring_color = "#9c27b0" if comfort >= 80 else ("#ffb300" if comfort >= 60 else "#ff4b4b")
         
@@ -193,46 +168,27 @@ with st.sidebar:
         st.markdown(f"""
         <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
             <div style="width: 120px; height: 120px; border-radius: 50%; background: conic-gradient({ring_color} {comfort}%, #2d303a 0); display: flex; justify-content: center; align-items: center; box-shadow: 0 0 15px rgba(0,0,0,0.5);">
-                <div style="width: 90px; height: 90px; border-radius: 50%; background-color: #0e1117; display: flex; justify-content: center; align-items: center;">
-                    <h2 style="margin:0; font-size: 1.8rem; color: {ring_color};">{comfort}%</h2>
-                </div>
+                <div style="width: 90px; height: 90px; border-radius: 50%; background-color: #0e1117; display: flex; justify-content: center; align-items: center;"><h2 style="margin:0; font-size: 1.8rem; color: {ring_color};">{comfort}%</h2></div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # MVP ROOM
-        today = pd.Timestamp.now().normalize()
-        today_df = global_df[global_df['Timestamp'] >= today]
+        today_df = global_df[global_df['Timestamp'] >= pd.Timestamp.now().normalize()]
         if not today_df.empty and today_df['People'].sum() > 0:
-            pop_room = today_df.groupby('Room')['People'].sum().idxmax()
             st.markdown("### 🏆 TODAY'S MVP")
-            st.markdown(f"""
-            <div style="background-color: #2d303a; border-left: 5px solid #00e5ff; border-radius: 5px; padding: 10px; margin-bottom: 20px;">
-                <p style="margin:0; font-size: 0.8rem; color: #f0f2f6; text-transform: uppercase;">Highest Traffic Space</p>
-                <h4 style="margin:0; color: #ffffff;">{pop_room}</h4>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"<div style='background-color: #2d303a; border-left: 5px solid #00e5ff; border-radius: 5px; padding: 10px; margin-bottom: 20px;'><p style='margin:0; font-size: 0.8rem; color: #f0f2f6; text-transform: uppercase;'>Highest Traffic Space</p><h4 style='margin:0; color: #ffffff;'>{today_df.groupby('Room')['People'].sum().idxmax()}</h4></div>", unsafe_allow_html=True)
 
-        # ALERTS
         st.markdown("### 🚨 SYSTEM ALERTS")
-        alerts = []
-        for _, row in latest_sb.iterrows():
-            if pd.notna(row['VOC Index']) and row['VOC Index'] > 150: alerts.append(f"⚠️ <b>{row['Room']}:</b> High VOC")
-            if pd.notna(row['Temperature']) and row['Temperature'] > 26: alerts.append(f"🔥 <b>{row['Room']}:</b> Too Hot")
+        alerts = [f"⚠️ <b>{row['Room']}:</b> High VOC" for _, row in latest_sb.iterrows() if pd.notna(row['VOC Index']) and row['VOC Index'] > 150]
+        alerts += [f"🔥 <b>{row['Room']}:</b> Too Hot" for _, row in latest_sb.iterrows() if pd.notna(row['Temperature']) and row['Temperature'] > 26]
         
-        if not alerts:
-            st.markdown("""
-            <div style="background-color: #1e3a2f; border: 1px solid #00e676; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 20px;">
-                <p style="margin:0; color: #00e676; font-weight: bold;">🟢 ALL SYSTEMS OPTIMAL</p>
-            </div>
-            """, unsafe_allow_html=True)
+        if not alerts: st.markdown("<div style='background-color: #1e3a2f; border: 1px solid #00e676; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 20px;'><p style='margin:0; color: #00e676; font-weight: bold;'>🟢 ALL SYSTEMS OPTIMAL</p></div>", unsafe_allow_html=True)
         else:
-            for alert in alerts:
-                st.markdown(f"<div style='background-color: #4a1919; border: 1px solid #ff4b4b; border-radius: 8px; padding: 8px; margin-bottom: 8px;'><p style='margin:0; color: #ffca28; font-size: 0.85rem;'>{alert}</p></div>", unsafe_allow_html=True)
+            for alert in alerts: st.markdown(f"<div style='background-color: #4a1919; border: 1px solid #ff4b4b; border-radius: 8px; padding: 8px; margin-bottom: 8px;'><p style='margin:0; color: #ffca28; font-size: 0.85rem;'>{alert}</p></div>", unsafe_allow_html=True)
 
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
-    st.success("Auto-Refresh: ACTIVE (2m)")
+    st.toggle("▶️ ENABLE AUTO-PILOT (Kiosk Mode)", key="autopilot")
     if st.button("🔄 FORCE FULL REFRESH", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
@@ -252,9 +208,7 @@ def render_main_dashboard():
             latest = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
             latest['Live Status'] = latest.apply(get_smart_status, axis=1)
             
-            total_people = int(latest['People'].sum(skipna=True))
-            rooms_available = int((latest['Live Status'] == "🟢 AVAILABLE").sum())
-            avg_voc = latest['VOC Index'].mean(skipna=True)
+            total_people, rooms_available, avg_voc = int(latest['People'].sum(skipna=True)), int((latest['Live Status'] == "🟢 AVAILABLE").sum()), latest['VOC Index'].mean(skipna=True)
             b_voc_color = "#ff4b4b" if avg_voc > 250 else ("#ffb300" if avg_voc > 150 else "#9c27b0")
             
             h1, h2, h3 = st.columns(3)
@@ -264,16 +218,28 @@ def render_main_dashboard():
             
             st.divider()
             st.subheader("LIVE FLEET STATUS")
-            dynamic_height = (len(latest) * 38) + 40 
             st.dataframe(
                 latest[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
                 column_config={"Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100)},
-                hide_index=True, use_container_width=True, height=dynamic_height
+                hide_index=True, use_container_width=True, height=(len(latest) * 38) + 40 
             )
 
         with tab2:
+            all_rooms = sorted(df['Room'].unique())
+            
+            # Failsafe for the Kiosk index
+            if st.session_state.kiosk_idx >= len(all_rooms):
+                st.session_state.kiosk_idx = 0
+
             c_room, c_date, c_grain = st.columns([1.5, 2, 1])
-            with c_room: selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
+            with c_room: 
+                # Binds the select box to the auto-pilot loop if active
+                selected_room = st.selectbox(
+                    "CHOOSE A ROOM:", 
+                    all_rooms,
+                    index=st.session_state.kiosk_idx if st.session_state.autopilot else 0,
+                    disabled=st.session_state.autopilot
+                )
             with c_date: date_range = st.date_input("SELECT DATE RANGE:", [datetime.now().date() - timedelta(days=7), datetime.now().date()])
             with c_grain: grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg"])
 
@@ -286,15 +252,11 @@ def render_main_dashboard():
                 f_df = f_df.set_index("Timestamp")
                 rule = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D"}[grain]
                 resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
-                
-                # We reset the index so 'Timestamp' becomes a column again for Altair to read
                 env_chart_df = resampled.reset_index()
                 
                 latest_val = f_df.iloc[-1]
                 v_voc, v_tmp, v_hum = latest_val['VOC Index'], latest_val['Temperature'], latest_val['Humidity']
-                voc_col = "#ff4b4b" if v_voc > 250 else ("#ffb300" if v_voc > 150 else "#9c27b0")
-                tmp_col = "#ff4b4b" if v_tmp > 26 else ("#00e5ff" if v_tmp < 16 else "#9c27b0")
-                hum_col = "#ffb300" if (v_hum < 30 or v_hum > 60) else "#9c27b0"
+                voc_col, tmp_col, hum_col = ("#ff4b4b" if v_voc > 250 else ("#ffb300" if v_voc > 150 else "#9c27b0")), ("#ff4b4b" if v_tmp > 26 else ("#00e5ff" if v_tmp < 16 else "#9c27b0")), ("#ffb300" if (v_hum < 30 or v_hum > 60) else "#9c27b0")
 
                 m1, m2, m3, m4 = st.columns(4)
                 m1.markdown(render_smart_card("LATEST TEMP", f"{v_tmp:.1f}°C", tmp_col), unsafe_allow_html=True)
@@ -303,11 +265,8 @@ def render_main_dashboard():
                 m4.markdown(render_smart_card("LATEST LIGHT", f"{latest_val['Light']:.0f} lx"), unsafe_allow_html=True)
                 
                 st.divider()
-                
-                # --- NEW INTERACTIVE CHARTS ---
                 st.markdown("#### 👥 OCCUPANCY HISTORY")
-                occ_df = (f_df["People"].resample(rule).max() if rule else f_df["People"]).reset_index()
-                occ_chart = create_interactive_chart(occ_df, 'People', '#aa00ff', 'bar', 'Max People', y_scale_zero=True)
+                occ_chart = create_interactive_chart((f_df["People"].resample(rule).max() if rule else f_df["People"]).reset_index(), 'People', '#aa00ff', 'bar', 'Max People', y_scale_zero=True)
                 st.altair_chart(occ_chart.properties(height=180), use_container_width=True)
                 
                 st.divider()
@@ -315,70 +274,63 @@ def render_main_dashboard():
                 with r1_1:
                     with st.container(border=True):
                         st.markdown("#### TEMPERATURE (°C)")
-                        # zero=False un-anchors the Y axis so temperature variations look clearer
-                        temp_chart = create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False)
-                        st.altair_chart(temp_chart.properties(height=220), use_container_width=True)
+                        st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
                 with r1_2:
                     with st.container(border=True):
                         st.markdown("#### HUMIDITY (%)")
-                        hum_chart = create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False)
-                        st.altair_chart(hum_chart.properties(height=220), use_container_width=True)
+                        st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
 
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     with st.container(border=True):
                         st.markdown("#### AIR QUALITY (VOC)")
-                        voc_chart = create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True)
-                        st.altair_chart(voc_chart.properties(height=220), use_container_width=True)
+                        st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), use_container_width=True)
                 with r2_2:
                     with st.container(border=True):
                         st.markdown("#### LIGHT LEVELS (LUX)")
-                        light_chart = create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True)
-                        st.altair_chart(light_chart.properties(height=220), use_container_width=True)
+                        st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), use_container_width=True)
 
                 st.divider()
                 st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
                 h_data = f_df.copy().reset_index()
-                h_data['Hour'] = h_data['Timestamp'].dt.hour
-                h_data['Day'] = h_data['Timestamp'].dt.day_name()
-                
-                heatmap = alt.Chart(h_data).mark_rect().encode(
-                    x=alt.X('Hour:O', title='Hour of Day'),
-                    y=alt.Y('Day:O', title='', sort=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
-                    color=alt.Color('max(People):Q', scale=alt.Scale(scheme='purples')),
-                    tooltip=['Day', 'Hour', 'max(People)']
-                ).properties(height=280)
-                st.altair_chart(heatmap, use_container_width=True)
+                h_data['Hour'], h_data['Day'] = h_data['Timestamp'].dt.hour, h_data['Timestamp'].dt.day_name()
+                st.altair_chart(alt.Chart(h_data).mark_rect().encode(x=alt.X('Hour:O', title='Hour of Day'), y=alt.Y('Day:O', title='', sort=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']), color=alt.Color('max(People):Q', scale=alt.Scale(scheme='purples')), tooltip=['Day', 'Hour', 'max(People)']).properties(height=280), use_container_width=True)
 
-                # --- CONTROL PANEL ---
                 st.divider()
                 st.markdown("#### ⚙️ REMOTE DEVICE MANAGEMENT")
                 st.caption(f"Execute live management commands on the Neat hardware located in **{selected_room}**.")
-                
                 c_btn1, c_btn2, c_btn3 = st.columns(3)
-                
                 with c_btn1:
                     if st.button("☀️ WAKE DISPLAY", use_container_width=True):
                         with st.spinner("Waking device..."):
                             success, msg = apply_neat_config(selected_room, {"screenStayOn": True, "screenStandby": 120})
                             if success: st.success(msg)
                             else: st.error(msg)
-                            
                 with c_btn2:
                     if st.button("🌙 FORCE SLEEP", use_container_width=True):
                         with st.spinner("Putting device to sleep..."):
                             success, msg = apply_neat_config(selected_room, {"screenStayOn": False, "screenStandby": 0})
                             if success: st.success(msg)
                             else: st.error(msg)
-
                 with c_btn3:
                     if st.button("🔄 REBOOT DEVICE", use_container_width=True, type="primary"):
                         with st.spinner("Sending reboot command..."):
                             success, msg = send_pulse_reboot(selected_room)
                             if success: st.success(msg)
                             else: st.error(msg)
-
-            else:
-                st.warning("Select a valid date range to see room data.")
+            else: st.warning("Select a valid date range to see room data.")
 
 render_main_dashboard()
+
+# ==========================================
+# 6. AUTO-PILOT / KIOSK LOOP ENGINE
+# ==========================================
+if st.session_state.get('autopilot', False):
+    # Pause for 10 seconds so the viewer can read the dashboard
+    time.sleep(10)
+    # Move to the next room index
+    all_rms = sorted(global_df['Room'].unique()) if not global_df.empty else []
+    if all_rms:
+        st.session_state.kiosk_idx = (st.session_state.kiosk_idx + 1) % len(all_rms)
+    # Force a refresh to render the new room
+    st.rerun()
