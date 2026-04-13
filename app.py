@@ -301,7 +301,7 @@ def render_main_dashboard():
     df = load_data(SHEET_URL)
     
     if not df.empty:
-        tab1, tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
+        tab1, tab2, tab3 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE", "🤖 AI ASSISTANT"])
 
         with tab1:
             latest = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
@@ -408,7 +408,71 @@ def render_main_dashboard():
                             if success: st.success(msg)
                             else: st.error(msg)
             else: st.warning("Select a valid date range to see room data.")
+with tab3:
+            st.markdown("### 💬 Chat with the Showroom")
+            st.caption("Ask me about room utilization, air quality, or live availability.")
+            
+            # 1. Initialize Chat History in Session State
+            if "messages" not in st.session_state:
+                st.session_state.messages = [
+                    {"role": "assistant", "content": "Hello! I am your Neat Showroom Assistant. Ask me things like: \n* *'Which is the most utilized room?'*\n* *'What rooms are available right now?'*\n* *'Which room has the worst air quality?'*"}
+                ]
 
+            # 2. Display existing chat messages
+            for msg in st.session_state.messages:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+
+            # 3. Chat Input Field
+            if prompt := st.chat_input("Ask a question about the showroom..."):
+                # Append user message to chat
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                # 4. "AI" Processing Logic (Intent Matching)
+                with st.chat_message("assistant"):
+                    response = ""
+                    query = prompt.lower()
+                    
+                    # Grab the absolute latest data for current status questions
+                    current_status_df = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
+                    current_status_df['Live Status'] = current_status_df.apply(get_smart_status, axis=1)
+
+                    # Intent: Most Utilized / Busiest
+                    if "utiliz" in query or "busiest" in query or "popular" in query:
+                        pop_room = df.groupby('Room')['People'].sum().idxmax()
+                        total_visits = int(df.groupby('Room')['People'].sum().max())
+                        response = f"Based on historical data, **{pop_room}** is your most utilized space, with a total detected occupancy count of {total_visits} across all logs."
+                    
+                    # Intent: Available Rooms
+                    elif "available" in query or "free" in query or "empty" in query:
+                        free_rooms = current_status_df[current_status_df['Live Status'] == "🟢 AVAILABLE"]['Room'].tolist()
+                        if free_rooms:
+                            response = f"Right now, there are {len(free_rooms)} rooms available: **{', '.join(free_rooms)}**."
+                        else:
+                            response = "It's a full house! All rooms are currently occupied or in use."
+
+                    # Intent: Air Quality / Stuffy / VOC
+                    elif "air" in query or "stuffy" in query or "voc" in query:
+                        worst_air = current_status_df.loc[current_status_df['VOC Index'].idxmax()]
+                        if worst_air['VOC Index'] > 150:
+                            response = f"The air quality in **{worst_air['Room']}** is currently dropping. The VOC index is at {worst_air['VOC Index']:.0f}. You might want to let some fresh air in!"
+                        else:
+                            response = f"Air quality looks great across the board. The highest VOC level right now is just {worst_air['VOC Index']:.0f} in {worst_air['Room']}."
+                    
+                    # Intent: Temperature / Hottest
+                    elif "hot" in query or "warm" in query or "temperature" in query:
+                        hottest = current_status_df.loc[current_status_df['Temperature'].idxmax()]
+                        response = f"The warmest room right now is **{hottest['Room']}** at {hottest['Temperature']:.1f}°C."
+
+                    # Fallback Intent
+                    else:
+                        response = "I'm still learning! Try asking me about **availability**, **utilization**, or **air quality**."
+
+                    # Display and save response
+                    st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
 render_main_dashboard()
 
 # ==========================================
