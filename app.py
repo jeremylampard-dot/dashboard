@@ -50,9 +50,11 @@ st.markdown("""
         box-shadow: 0 20px 40px rgba(156, 39, 176, 0.6) !important;
     }
     
-    /* --- ✨ NEW: CHUNKY & ANIMATED TABS ✨ --- */
+    /* --- ✨ FIXED: CHUNKY & ANIMATED TABS ✨ --- */
     div[data-baseweb="tab-list"] {
-        gap: 15px; /* Adds space between the tabs */
+        gap: 15px; 
+        padding-top: 20px !important; /* Gives headroom for the hover jump */
+        padding-bottom: 25px !important; /* Gives room for the drop shadow */
     }
     button[data-baseweb="tab"] {
         background-color: #2d303a !important;
