@@ -218,4 +218,167 @@ with st.sidebar:
         alerts = []
         for _, row in latest_sb.iterrows():
             if pd.notna(row['VOC Index']) and row['VOC Index'] > 150: alerts.append(f"⚠️ <b>{row['Room']}:</b> High VOC")
-            if pd.notna(row['Temperature']) and row['Temperature'] > 26: alerts.append(f"
+            if pd.notna(row['Temperature']) and row['Temperature'] > 26: alerts.append(f"🔥 <b>{row['Room']}:</b> Too Hot")
+        
+        if not alerts:
+            st.markdown("""
+            <div style="background-color: #1e3a2f; border: 1px solid #00e676; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 20px;">
+                <p style="margin:0; color: #00e676; font-weight: bold;">🟢 ALL SYSTEMS OPTIMAL</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            for alert in alerts:
+                st.markdown(f"<div style='background-color: #4a1919; border: 1px solid #ff4b4b; border-radius: 8px; padding: 8px; margin-bottom: 8px;'><p style='margin:0; color: #ffca28; font-size: 0.85rem;'>{alert}</p></div>", unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("### 🛠️ DASHBOARD CONTROL")
+    st.success("Auto-Refresh: ACTIVE (2m)")
+    if st.button("🔄 FORCE FULL REFRESH", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+# ==========================================
+# 5. DASHBOARD ENGINE 
+# ==========================================
+@st.fragment(run_every="2m")
+def render_main_dashboard():
+    st.title("🏢 Neat London Showroom")
+    df = load_data(SHEET_URL)
+    
+    if not df.empty:
+        tab1, tab2 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE"])
+
+        with tab1:
+            latest = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
+            latest['Live Status'] = latest.apply(get_smart_status, axis=1)
+            
+            total_people = int(latest['People'].sum(skipna=True))
+            rooms_available = int((latest['Live Status'] == "🟢 AVAILABLE").sum())
+            avg_voc = latest['VOC Index'].mean(skipna=True)
+            b_voc_color = "#ff4b4b" if avg_voc > 250 else ("#ffb300" if avg_voc > 150 else "#9c27b0")
+            
+            h1, h2, h3 = st.columns(3)
+            h1.markdown(render_smart_card("TOTAL PEOPLE IN SHOWROOM", f"{total_people} 👥"), unsafe_allow_html=True)
+            h2.markdown(render_smart_card("ROOMS CURRENTLY AVAILABLE", f"{rooms_available} 🟢"), unsafe_allow_html=True)
+            h3.markdown(render_smart_card("BUILDING AIR QUALITY (VOC)", f"{avg_voc:.0f} 🌬️", b_voc_color), unsafe_allow_html=True)
+            
+            st.divider()
+            st.subheader("LIVE FLEET STATUS")
+            dynamic_height = (len(latest) * 38) + 40 
+            st.dataframe(
+                latest[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
+                column_config={"Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100)},
+                hide_index=True, use_container_width=True, height=dynamic_height
+            )
+
+        with tab2:
+            c_room, c_date, c_grain = st.columns([1.5, 2, 1])
+            with c_room: selected_room = st.selectbox("CHOOSE A ROOM:", sorted(df['Room'].unique()))
+            with c_date: date_range = st.date_input("SELECT DATE RANGE:", [datetime.now().date() - timedelta(days=7), datetime.now().date()])
+            with c_grain: grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg"])
+
+            f_df = df[df['Room'] == selected_room].copy()
+            if len(date_range) == 2:
+                start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) + timedelta(days=1)
+                f_df = f_df[(f_df['Timestamp'] >= start) & (f_df['Timestamp'] < end)]
+            
+            if not f_df.empty:
+                f_df = f_df.set_index("Timestamp")
+                rule = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D"}[grain]
+                resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
+                
+                # We reset the index so 'Timestamp' becomes a column again for Altair to read
+                env_chart_df = resampled.reset_index()
+                
+                latest_val = f_df.iloc[-1]
+                v_voc, v_tmp, v_hum = latest_val['VOC Index'], latest_val['Temperature'], latest_val['Humidity']
+                voc_col = "#ff4b4b" if v_voc > 250 else ("#ffb300" if v_voc > 150 else "#9c27b0")
+                tmp_col = "#ff4b4b" if v_tmp > 26 else ("#00e5ff" if v_tmp < 16 else "#9c27b0")
+                hum_col = "#ffb300" if (v_hum < 30 or v_hum > 60) else "#9c27b0"
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.markdown(render_smart_card("LATEST TEMP", f"{v_tmp:.1f}°C", tmp_col), unsafe_allow_html=True)
+                m2.markdown(render_smart_card("LATEST HUMIDITY", f"{v_hum:.0f}%", hum_col), unsafe_allow_html=True)
+                m3.markdown(render_smart_card("LATEST VOC", f"{v_voc:.0f}", voc_col), unsafe_allow_html=True)
+                m4.markdown(render_smart_card("LATEST LIGHT", f"{latest_val['Light']:.0f} lx"), unsafe_allow_html=True)
+                
+                st.divider()
+                
+                # --- NEW INTERACTIVE CHARTS ---
+                st.markdown("#### 👥 OCCUPANCY HISTORY")
+                occ_df = (f_df["People"].resample(rule).max() if rule else f_df["People"]).reset_index()
+                occ_chart = create_interactive_chart(occ_df, 'People', '#aa00ff', 'bar', 'Max People', y_scale_zero=True)
+                st.altair_chart(occ_chart.properties(height=180), use_container_width=True)
+                
+                st.divider()
+                r1_1, r1_2 = st.columns(2)
+                with r1_1:
+                    with st.container(border=True):
+                        st.markdown("#### TEMPERATURE (°C)")
+                        # zero=False un-anchors the Y axis so temperature variations look clearer
+                        temp_chart = create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False)
+                        st.altair_chart(temp_chart.properties(height=220), use_container_width=True)
+                with r1_2:
+                    with st.container(border=True):
+                        st.markdown("#### HUMIDITY (%)")
+                        hum_chart = create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False)
+                        st.altair_chart(hum_chart.properties(height=220), use_container_width=True)
+
+                r2_1, r2_2 = st.columns(2)
+                with r2_1:
+                    with st.container(border=True):
+                        st.markdown("#### AIR QUALITY (VOC)")
+                        voc_chart = create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True)
+                        st.altair_chart(voc_chart.properties(height=220), use_container_width=True)
+                with r2_2:
+                    with st.container(border=True):
+                        st.markdown("#### LIGHT LEVELS (LUX)")
+                        light_chart = create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True)
+                        st.altair_chart(light_chart.properties(height=220), use_container_width=True)
+
+                st.divider()
+                st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
+                h_data = f_df.copy().reset_index()
+                h_data['Hour'] = h_data['Timestamp'].dt.hour
+                h_data['Day'] = h_data['Timestamp'].dt.day_name()
+                
+                heatmap = alt.Chart(h_data).mark_rect().encode(
+                    x=alt.X('Hour:O', title='Hour of Day'),
+                    y=alt.Y('Day:O', title='', sort=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
+                    color=alt.Color('max(People):Q', scale=alt.Scale(scheme='purples')),
+                    tooltip=['Day', 'Hour', 'max(People)']
+                ).properties(height=280)
+                st.altair_chart(heatmap, use_container_width=True)
+
+                # --- CONTROL PANEL ---
+                st.divider()
+                st.markdown("#### ⚙️ REMOTE DEVICE MANAGEMENT")
+                st.caption(f"Execute live management commands on the Neat hardware located in **{selected_room}**.")
+                
+                c_btn1, c_btn2, c_btn3 = st.columns(3)
+                
+                with c_btn1:
+                    if st.button("☀️ WAKE DISPLAY", use_container_width=True):
+                        with st.spinner("Waking device..."):
+                            success, msg = apply_neat_config(selected_room, {"screenStayOn": True, "screenStandby": 120})
+                            if success: st.success(msg)
+                            else: st.error(msg)
+                            
+                with c_btn2:
+                    if st.button("🌙 FORCE SLEEP", use_container_width=True):
+                        with st.spinner("Putting device to sleep..."):
+                            success, msg = apply_neat_config(selected_room, {"screenStayOn": False, "screenStandby": 0})
+                            if success: st.success(msg)
+                            else: st.error(msg)
+
+                with c_btn3:
+                    if st.button("🔄 REBOOT DEVICE", use_container_width=True, type="primary"):
+                        with st.spinner("Sending reboot command..."):
+                            success, msg = send_pulse_reboot(selected_room)
+                            if success: st.success(msg)
+                            else: st.error(msg)
+
+            else:
+                st.warning("Select a valid date range to see room data.")
+
+render_main_dashboard()
