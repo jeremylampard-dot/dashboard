@@ -26,7 +26,7 @@ st.markdown("""
         color: #f0f2f6;
     }
     
-    /* ✨ THE FIX: Protect Streamlit's Native Icons ✨ */
+    /* Protect Streamlit's Native Icons */
     .material-symbols-rounded, .material-icons {
         font-family: 'Material Symbols Rounded', 'Material Icons' !important;
     }
@@ -125,11 +125,9 @@ st.markdown("""
 # ==========================================
 # 2. NEAT PULSE API LOGIC (LIVE MODE)
 # ==========================================
-# 🛑 1. PASTE YOUR REAL KEYS HERE 🛑
 PULSE_ORG_ID = "YOUR_ORGANIZATION_ID"
 PULSE_API_KEY = "YOUR_API_KEY"
 
-# 🛑 2. MAP YOUR FRIENDLY ROOM NAMES TO EXACT NEAT ENDPOINT IDs 🛑
 ENDPOINT_MAP = {
     "Boardroom": "paste-endpoint-id-here",
     "Front Booth": "paste-endpoint-id-here",
@@ -188,6 +186,81 @@ def render_smart_card(label, value, color="#9c27b0"):
         <h2 style="margin:5px 0 0 0; font-size: 2.5rem; font-weight: 900; color: {color}; text-shadow: 0 0 20px {color}40;">{value}</h2>
     </div>
     """
+
+# --- NEW: CUSTOM HTML FLEET TABLE ---
+def render_fleet_table(df):
+    html = """
+    <style>
+    .fleet-table { width: 100%; border-collapse: separate; border-spacing: 0 12px; margin-top: 10px; }
+    .fleet-th { color: #a0a5b5; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 0 20px 10px 20px; text-align: left; }
+    .fleet-tr { background: rgba(45, 48, 58, 0.4); transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+    .fleet-tr:hover { background: rgba(156, 39, 176, 0.2); box-shadow: 0 8px 25px rgba(156, 39, 176, 0.3); transform: scale(1.01); }
+    .fleet-td { padding: 20px; font-size: 1.2rem; font-weight: 500; color: #f0f2f6; border-top: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
+    .fleet-td:first-child { border-left: 4px solid #9c27b0; border-top-left-radius: 12px; border-bottom-left-radius: 12px; font-weight: 900; font-size: 1.3rem; letter-spacing: 0.5px; }
+    .fleet-td:last-child { border-right: 1px solid rgba(255,255,255,0.05); border-top-right-radius: 12px; border-bottom-right-radius: 12px; }
+    
+    .badge { padding: 6px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 900; letter-spacing: 1px; display: inline-block; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+    .badge-avail { background: rgba(0, 230, 118, 0.2); color: #00e676; border: 1px solid rgba(0, 230, 118, 0.4); }
+    .badge-occ { background: rgba(255, 179, 0, 0.2); color: #ffca28; border: 1px solid rgba(255, 179, 0, 0.4); }
+    .badge-use { background: rgba(255, 75, 75, 0.2); color: #ff4b4b; border: 1px solid rgba(255, 75, 75, 0.4); }
+    
+    .metric-val { font-weight: 900; font-size: 1.4rem; }
+    .metric-unit { font-size: 0.9rem; color: #a0a5b5; font-weight: 500; margin-left: 4px; }
+    </style>
+    <table class="fleet-table">
+        <thead>
+            <tr>
+                <th class="fleet-th">Room</th>
+                <th class="fleet-th">Status</th>
+                <th class="fleet-th">Temp</th>
+                <th class="fleet-th" style="width: 25%;">Humidity</th>
+                <th class="fleet-th">VOC</th>
+                <th class="fleet-th">Light</th>
+                <th class="fleet-th">Occupancy</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+    
+    for _, row in df.iterrows():
+        room = row['Room']
+        status = row['Live Status']
+        
+        if "AVAILABLE" in status: badge = f'<span class="badge badge-avail">{status}</span>'
+        elif "OCCUPIED" in status: badge = f'<span class="badge badge-occ">{status}</span>'
+        else: badge = f'<span class="badge badge-use">{status}</span>'
+            
+        temp = f"<span class='metric-val'>{row['Temperature']:.1f}</span><span class='metric-unit'>°C</span>" if pd.notna(row['Temperature']) else "-"
+        
+        hum_val = int(row['Humidity']) if pd.notna(row['Humidity']) else 0
+        hum_color = "#ffb300" if (hum_val < 30 or hum_val > 60) else "#7c4dff"
+        hum = f"""
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="flex-grow: 1; background: rgba(255,255,255,0.1); height: 10px; border-radius: 5px; overflow: hidden;">
+                <div style="width: {hum_val}%; background: {hum_color}; height: 100%; border-radius: 5px; box-shadow: 0 0 10px {hum_color}80;"></div>
+            </div>
+            <span style="font-weight: 900; font-size: 1.2rem; width: 50px;">{hum_val}%</span>
+        </div>
+        """
+        
+        voc = f"<span class='metric-val'>{row['VOC Index']:.0f}</span><span class='metric-unit'>idx</span>" if pd.notna(row['VOC Index']) else "-"
+        light = f"<span class='metric-val'>{row['Light']:.0f}</span><span class='metric-unit'>lx</span>" if pd.notna(row['Light']) else "-"
+        people = f"<span class='metric-val'>{int(row['People'])}</span><span class='metric-unit'>👥</span>" if pd.notna(row['People']) else "-"
+        
+        html += f"""
+            <tr class="fleet-tr">
+                <td class="fleet-td">{room}</td>
+                <td class="fleet-td">{badge}</td>
+                <td class="fleet-td">{temp}</td>
+                <td class="fleet-td">{hum}</td>
+                <td class="fleet-td">{voc}</td>
+                <td class="fleet-td">{light}</td>
+                <td class="fleet-td">{people}</td>
+            </tr>
+        """
+        
+    html += "</tbody></table>"
+    return html
 
 def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_scale_zero=False):
     base = alt.Chart(data).encode(
@@ -289,11 +362,9 @@ def render_main_dashboard():
             
             st.divider()
             st.subheader("LIVE FLEET STATUS")
-            st.dataframe(
-                latest[['Room', 'Live Status', 'Temperature', 'Humidity', 'VOC Index', 'Light', 'People']], 
-                column_config={"Humidity": st.column_config.ProgressColumn("Humidity", format="%d%%", min_value=0, max_value=100)},
-                hide_index=True, use_container_width=True, height=(len(latest) * 38) + 40 
-            )
+            
+            # --- INJECTING THE NEW CUSTOM HTML TABLE ---
+            st.markdown(render_fleet_table(latest), unsafe_allow_html=True)
 
         with tab2:
             all_rooms = sorted(df['Room'].unique())
