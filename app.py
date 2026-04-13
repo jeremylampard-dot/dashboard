@@ -20,9 +20,15 @@ st.markdown("""
     /* Import Premium Font */
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&display=swap');
     
-    html, body, [class*="ViewContainer"], h1, h2, h3, h4, h5, h6, p, span, button, div {
+    /* Apply Custom Font Carefully to Avoid Breaking Icons */
+    html, body, [class*="ViewContainer"], h1, h2, h3, h4, h5, h6, p, label, .stMarkdown {
         font-family: 'Outfit', sans-serif !important;
         color: #f0f2f6;
+    }
+    
+    /* ✨ THE FIX: Protect Streamlit's Native Icons ✨ */
+    .material-symbols-rounded, .material-icons {
+        font-family: 'Material Symbols Rounded', 'Material Icons' !important;
     }
     
     /* Animated Nebula Background */
@@ -77,6 +83,7 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 15px !important;
         padding: 12px 25px !important;
+        font-family: 'Outfit', sans-serif !important;
         font-weight: 700 !important;
         font-size: 1.1rem !important;
         color: #a0a5b5 !important;
@@ -101,6 +108,7 @@ st.markdown("""
         background: rgba(255, 75, 75, 0.8) !important;
         backdrop-filter: blur(5px) !important;
         color: white !important;
+        font-family: 'Outfit', sans-serif !important;
         font-weight: 900 !important;
         border: 1px solid rgba(255, 255, 255, 0.2) !important;
         border-radius: 10px !important;
@@ -174,7 +182,6 @@ def get_smart_status(row):
     return "🟢 AVAILABLE"
 
 def render_smart_card(label, value, color="#9c27b0"):
-    # Updated to Frosted Glass look
     return f"""
     <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-left: 4px solid {color}; border-radius: 15px; padding: 20px; margin-bottom: 15px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);">
         <p style="margin:0; font-size: 0.85rem; font-weight: 700; color: #a0a5b5; text-transform: uppercase; letter-spacing: 1.5px;">{label}</p>
@@ -189,7 +196,6 @@ def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_
         tooltip=[alt.Tooltip('Timestamp:T', format='%Y-%m-%d %H:%M', title='Time'), alt.Tooltip(f'{y_col}:Q', format='.1f', title=y_col)]
     )
     if chart_type == 'line': 
-        # Create Cinematic Area Gradient
         line = base.mark_line(color=color, strokeWidth=3)
         area = base.mark_area(
             opacity=0.3,
@@ -199,12 +205,10 @@ def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_
                 x1=1, x2=1, y1=1, y2=0
             )
         )
-        # Combine them
         chart = (area + line).interactive()
     else: 
         chart = base.mark_bar(color=color, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).interactive()
         
-    # Apply clean minimal theme to chart
     return chart.configure_view(strokeWidth=0).configure_axis(domain=False)
 
 global_df = load_data(SHEET_URL)
