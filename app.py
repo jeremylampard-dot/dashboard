@@ -50,6 +50,38 @@ st.markdown("""
         box-shadow: 0 20px 40px rgba(156, 39, 176, 0.6) !important;
     }
     
+    /* --- ✨ NEW: CHUNKY & ANIMATED TABS ✨ --- */
+    div[data-baseweb="tab-list"] {
+        gap: 15px; /* Adds space between the tabs */
+    }
+    button[data-baseweb="tab"] {
+        background-color: #2d303a !important;
+        border: 2px solid #404452 !important;
+        border-radius: 15px !important;
+        padding: 15px 30px !important;
+        font-family: 'Arial Black', 'Impact', sans-serif !important;
+        font-weight: 900 !important;
+        font-size: 1.2rem !important;
+        color: #f0f2f6 !important;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    }
+    button[data-baseweb="tab"]:hover {
+        transform: translateY(-8px) scale(1.05) !important;
+        border-color: #9c27b0 !important;
+        box-shadow: 0 15px 25px rgba(156, 39, 176, 0.4) !important;
+        color: #ffffff !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: #9c27b0 !important;
+        border-color: #e040fb !important;
+        color: #ffffff !important;
+        box-shadow: 0 10px 20px rgba(156, 39, 176, 0.6) !important;
+    }
+    /* Removes the thin little native Streamlit active bar */
+    div[data-baseweb="tab-highlight"] {
+        display: none !important; 
+    }
+    
     /* Style for the Danger/Reboot Button */
     button[kind="primary"] {
         background-color: #ff4b4b !important;
@@ -227,13 +259,11 @@ def render_main_dashboard():
         with tab2:
             all_rooms = sorted(df['Room'].unique())
             
-            # Failsafe for the Kiosk index
             if st.session_state.kiosk_idx >= len(all_rooms):
                 st.session_state.kiosk_idx = 0
 
             c_room, c_date, c_grain = st.columns([1.5, 2, 1])
             with c_room: 
-                # Binds the select box to the auto-pilot loop if active
                 selected_room = st.selectbox(
                     "CHOOSE A ROOM:", 
                     all_rooms,
@@ -326,11 +356,8 @@ render_main_dashboard()
 # 6. AUTO-PILOT / KIOSK LOOP ENGINE
 # ==========================================
 if st.session_state.get('autopilot', False):
-    # Pause for 10 seconds so the viewer can read the dashboard
     time.sleep(10)
-    # Move to the next room index
     all_rms = sorted(global_df['Room'].unique()) if not global_df.empty else []
     if all_rms:
         st.session_state.kiosk_idx = (st.session_state.kiosk_idx + 1) % len(all_rms)
-    # Force a refresh to render the new room
     st.rerun()
