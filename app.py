@@ -171,7 +171,6 @@ def render_smart_card(label, value, color="#9c27b0"):
     </div>
     """
 
-# --- FIXED: HTML TABLE WITH PROPER INDENTATION ---
 def render_fleet_table(df):
     html = "<style>"
     html += ".fleet-table { width: 100%; border-collapse: separate; border-spacing: 0 12px; margin-top: 10px; }"
@@ -209,13 +208,11 @@ def render_fleet_table(df):
         light = f"<span class='metric-val'>{row['Light']:.0f}</span><span class='metric-unit'>lx</span>" if pd.notna(row['Light']) else "-"
         people = f"<span class='metric-val'>{int(row['People'])}</span><span class='metric-unit'>👥</span>" if pd.notna(row['People']) else "-"
         
-        # Pushing the HTML string straight into the block to avoid markdown indentation
         html += f"<tr class='fleet-tr'><td class='fleet-td'>{room}</td><td class='fleet-td'>{badge}</td><td class='fleet-td'>{temp}</td><td class='fleet-td'>{hum}</td><td class='fleet-td'>{voc}</td><td class='fleet-td'>{light}</td><td class='fleet-td'>{people}</td></tr>"
         
     html += "</tbody></table>"
     return html
 
-# --- FIXED: ALTAIR MISSING DATES ON BAR CHARTS ---
 def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_scale_zero=False):
     base = alt.Chart(data).encode(
         x=alt.X('Timestamp:T', title='', axis=alt.Axis(grid=False, labelColor='#a0a5b5', tickCount=5)),
@@ -234,7 +231,6 @@ def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_
         )
         chart = (area + line).interactive()
     else: 
-        # Fixes the vanished dates by using a stepped area chart instead of a standard bar
         chart = base.mark_area(color=color, opacity=0.8, interpolate='step-after').interactive()
         
     return chart.configure_view(strokeWidth=0).configure_axis(domain=False)
@@ -408,7 +404,8 @@ def render_main_dashboard():
                             if success: st.success(msg)
                             else: st.error(msg)
             else: st.warning("Select a valid date range to see room data.")
-with tab3:
+
+        with tab3:
             st.markdown("### 💬 Chat with the Showroom")
             st.caption("Ask me about room utilization, air quality, or live availability.")
             
@@ -473,6 +470,7 @@ with tab3:
                     # Display and save response
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response})
+
 render_main_dashboard()
 
 # ==========================================
