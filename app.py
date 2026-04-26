@@ -120,11 +120,11 @@ ENDPOINT_MAP = {
 }
 
 @st.cache_data(ttl=300) 
-def get_neat_device_info(room_name):
-    """Fetches live Firmware and App Version from the Neat Pulse API."""
+def get_neat_raw_data(room_name):
+    """Fetches the raw JSON payload from the Neat Pulse API."""
     endpoint_id = ENDPOINT_MAP.get(room_name)
     if not endpoint_id or endpoint_id == "paste-endpoint-id-here": 
-        return "N/A", "N/A"
+        return {"Status": "Error", "Message": f"No valid Endpoint ID mapped for '{room_name}' in the script."}
         
     api_url = f"https://api.pulse.neat.no/v1/orgs/{PULSE_ORG_ID}/endpoints/{endpoint_id}"
     headers = {"Authorization": f"Bearer {PULSE_API_KEY}", "Accept": "application/json"}
@@ -132,13 +132,9 @@ def get_neat_device_info(room_name):
     try:
         response = requests.get(api_url, headers=headers, timeout=5)
         response.raise_for_status()
-        data = response.json()
-        
-        # 🛑 DEBUG MODE: Spit out the raw data so we can see the exact dictionary keys
-        return str(data), "Debug Mode"
-        
+        return response.json()
     except Exception as e:
-        return f"Error: {str(e)}", "Offline"
+        return {"Status": "Offline / Error", "Details": str(e)}
 
 def send_pulse_reboot(room_name):
     endpoint_id = ENDPOINT_MAP.get(room_name)
@@ -421,23 +417,14 @@ def render_main_dashboard():
                 
                 st.altair_chart(heatmap, use_container_width=True)
 
+                # --- NEW: RAW API EXPLORER SECTION ---
                 st.divider()
                 st.markdown("#### ⚙️ HARDWARE DETAILS & MANAGEMENT")
                 
-                fw_ver, app_ver = get_neat_device_info(selected_room)
+                raw_api_data = get_neat_raw_data(selected_room)
                 
-                st.markdown(f"""
-                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-                    <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); padding: 15px 25px; border-radius: 10px; border-left: 4px solid #00e5ff; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 700; letter-spacing: 1px;">NEAT OS FIRMWARE</p>
-                        <h4 style="margin:5px 0 0 0; color: white; font-size: 1.4rem;">{fw_ver}</h4>
-                    </div>
-                    <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); padding: 15px 25px; border-radius: 10px; border-left: 4px solid #e040fb; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 700; letter-spacing: 1px;">RAW API DATA / ACTIVE APP</p>
-                        <h4 style="margin:5px 0 0 0; color: white; font-size: 1.4rem;">{app_ver}</h4>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                with st.expander("🔍 VIEW RAW NEAT PULSE JSON", expanded=True):
+                    st.json(raw_api_data)
                 
                 st.caption(f"Execute live management commands on the Neat hardware located in **{selected_room}**.")
                 c_btn1, c_btn2, c_btn3 = st.columns(3)
