@@ -157,6 +157,34 @@ def load_data(url):
     df['Status'] = df['Status'].fillna('available').astype(str).str.strip().str.lower()
     return df.dropna(subset=['Timestamp']).sort_values('Timestamp')
 
+# --- LIVE WEATHER CACHE ENGINE ---
+@st.cache_data(ttl=900) # Caches weather for 15 minutes to prevent API spam
+def get_live_weather():
+    try:
+        # GPS Coordinates for London
+        url = "https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=Europe%2FLondon"
+        res = requests.get(url, timeout=5)
+        res.raise_for_status()
+        data = res.json()
+        
+        curr_temp = round(data['current']['temperature_2m'])
+        w_code = data['current']['weather_code']
+        max_temp = round(data['daily']['temperature_2m_max'][0])
+        min_temp = round(data['daily']['temperature_2m_min'][0])
+        
+        # WMO Weather mapping
+        w_map = {
+            0: "Clear Sky ☀️", 1: "Mainly Clear 🌤️", 2: "Partly Cloudy ⛅", 3: "Overcast ☁️",
+            45: "Foggy 🌫️", 48: "Foggy 🌫️", 51: "Light Drizzle 🌧️", 53: "Drizzle 🌧️", 55: "Heavy Drizzle 🌧️",
+            61: "Light Rain ☔", 63: "Rain ☔", 65: "Heavy Rain ☔", 71: "Light Snow 🌨️", 73: "Snow 🌨️", 
+            75: "Heavy Snow 🌨️", 95: "Thunderstorm ⛈️", 96: "Thunderstorm ⛈️", 99: "Thunderstorm ⛈️"
+        }
+        desc = w_map.get(w_code, "Cloudy ☁️")
+        return curr_temp, desc, max_temp, min_temp
+    except Exception:
+        # Failsafe if offline
+        return 18, "Cloudy ☁️", 20, 5
+
 def get_smart_status(row):
     if str(row['Status']) == "in use": return "🔴 IN USE"
     people = row['People'] if pd.notna(row['People']) else 0
@@ -242,12 +270,16 @@ global_df = load_data(SHEET_URL)
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
+    
+    # Grab the live weather!
+    curr_t, w_desc, high_t, low_t = get_live_weather()
+    
     st.markdown(f"""
     <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px; box-shadow: 0 8px 32px 0 rgba(0,0,0,0.2);">
-        <h1 style="margin:0; font-size: 3rem; color: #ffffff;">18°C</h1>
-        <p style="margin:0; font-weight: 700; color: #9c27b0; text-transform: uppercase; letter-spacing: 2px;">Cloudy</p>
+        <h1 style="margin:0; font-size: 3rem; color: #ffffff;">{curr_t}°C</h1>
+        <p style="margin:0; font-weight: 700; color: #9c27b0; text-transform: uppercase; letter-spacing: 2px;">{w_desc}</p>
         <hr style="border: 1px solid rgba(255,255,255,0.05); margin: 15px 0;">
-        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 500;">H: 20°C | L: 5°C</p>
+        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 500;">H: {high_t}°C | L: {low_t}°C</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -409,40 +441,32 @@ def render_main_dashboard():
             st.markdown("### 💬 Chat with the Showroom")
             st.caption("Ask me about room utilization, air quality, or live availability.")
             
-            # 1. Initialize Chat History in Session State
             if "messages" not in st.session_state:
                 st.session_state.messages = [
                     {"role": "assistant", "content": "Hello! I am your Neat Showroom Assistant. Ask me things like: \n* *'Which is the most utilized room?'*\n* *'What rooms are available right now?'*\n* *'Which room has the worst air quality?'*"}
                 ]
 
-            # 2. Display existing chat messages
             for msg in st.session_state.messages:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-            # 3. Chat Input Field
             if prompt := st.chat_input("Ask a question about the showroom..."):
-                # Append user message to chat
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
-                # 4. "AI" Processing Logic (Intent Matching)
                 with st.chat_message("assistant"):
                     response = ""
                     query = prompt.lower()
                     
-                    # Grab the absolute latest data for current status questions
                     current_status_df = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
                     current_status_df['Live Status'] = current_status_df.apply(get_smart_status, axis=1)
 
-                    # Intent: Most Utilized / Busiest
                     if "utiliz" in query or "busiest" in query or "popular" in query:
                         pop_room = df.groupby('Room')['People'].sum().idxmax()
                         total_visits = int(df.groupby('Room')['People'].sum().max())
                         response = f"Based on historical data, **{pop_room}** is your most utilized space, with a total detected occupancy count of {total_visits} across all logs."
                     
-                    # Intent: Available Rooms
                     elif "available" in query or "free" in query or "empty" in query:
                         free_rooms = current_status_df[current_status_df['Live Status'] == "🟢 AVAILABLE"]['Room'].tolist()
                         if free_rooms:
@@ -450,7 +474,6 @@ def render_main_dashboard():
                         else:
                             response = "It's a full house! All rooms are currently occupied or in use."
 
-                    # Intent: Air Quality / Stuffy / VOC
                     elif "air" in query or "stuffy" in query or "voc" in query:
                         worst_air = current_status_df.loc[current_status_df['VOC Index'].idxmax()]
                         if worst_air['VOC Index'] > 150:
@@ -458,16 +481,13 @@ def render_main_dashboard():
                         else:
                             response = f"Air quality looks great across the board. The highest VOC level right now is just {worst_air['VOC Index']:.0f} in {worst_air['Room']}."
                     
-                    # Intent: Temperature / Hottest
                     elif "hot" in query or "warm" in query or "temperature" in query:
                         hottest = current_status_df.loc[current_status_df['Temperature'].idxmax()]
                         response = f"The warmest room right now is **{hottest['Room']}** at {hottest['Temperature']:.1f}°C."
 
-                    # Fallback Intent
                     else:
                         response = "I'm still learning! Try asking me about **availability**, **utilization**, or **air quality**."
 
-                    # Display and save response
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response})
 
