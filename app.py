@@ -119,6 +119,29 @@ ENDPOINT_MAP = {
     "Harris": "6e0f6d6b-97a5-4c2d-8c8d-286e71ea02cc"
 }
 
+@st.cache_data(ttl=300) # Cache for 5 mins so Kiosk mode doesn't burn API limits
+def get_neat_device_info(room_name):
+    """Fetches live Firmware and App Version from the Neat Pulse API."""
+    endpoint_id = ENDPOINT_MAP.get(room_name)
+    if not endpoint_id or endpoint_id == "paste-endpoint-id-here": 
+        return "N/A", "N/A"
+        
+    api_url = f"https://api.pulse.neat.no/v1/orgs/{PULSE_ORG_ID}/endpoints/{endpoint_id}"
+    headers = {"Authorization": f"Bearer {PULSE_API_KEY}", "Accept": "application/json"}
+    
+    try:
+        response = requests.get(api_url, headers=headers, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Pulling version data (Using common fallbacks if exact keys vary)
+        fw = data.get('osVersion', data.get('firmwareVersion', 'N/A'))
+        app = data.get('appVersion', data.get('softwareVersion', 'N/A'))
+        
+        return fw, app
+    except Exception:
+        return "Offline", "Offline"
+
 def send_pulse_reboot(room_name):
     endpoint_id = ENDPOINT_MAP.get(room_name)
     if not endpoint_id: return False, f"Setup Error: No Endpoint ID mapped for '{room_name}'."
@@ -157,32 +180,20 @@ def load_data(url):
     df['Status'] = df['Status'].fillna('available').astype(str).str.strip().str.lower()
     return df.dropna(subset=['Timestamp']).sort_values('Timestamp')
 
-# --- LIVE WEATHER CACHE ENGINE ---
-@st.cache_data(ttl=900) # Caches weather for 15 minutes to prevent API spam
+@st.cache_data(ttl=900) 
 def get_live_weather():
     try:
-        # GPS Coordinates for London
         url = "https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=Europe%2FLondon"
         res = requests.get(url, timeout=5)
         res.raise_for_status()
         data = res.json()
-        
         curr_temp = round(data['current']['temperature_2m'])
         w_code = data['current']['weather_code']
         max_temp = round(data['daily']['temperature_2m_max'][0])
         min_temp = round(data['daily']['temperature_2m_min'][0])
-        
-        # WMO Weather mapping
-        w_map = {
-            0: "Clear Sky ☀️", 1: "Mainly Clear 🌤️", 2: "Partly Cloudy ⛅", 3: "Overcast ☁️",
-            45: "Foggy 🌫️", 48: "Foggy 🌫️", 51: "Light Drizzle 🌧️", 53: "Drizzle 🌧️", 55: "Heavy Drizzle 🌧️",
-            61: "Light Rain ☔", 63: "Rain ☔", 65: "Heavy Rain ☔", 71: "Light Snow 🌨️", 73: "Snow 🌨️", 
-            75: "Heavy Snow 🌨️", 95: "Thunderstorm ⛈️", 96: "Thunderstorm ⛈️", 99: "Thunderstorm ⛈️"
-        }
-        desc = w_map.get(w_code, "Cloudy ☁️")
-        return curr_temp, desc, max_temp, min_temp
+        w_map = {0: "Clear Sky ☀️", 1: "Mainly Clear 🌤️", 2: "Partly Cloudy ⛅", 3: "Overcast ☁️", 45: "Foggy 🌫️", 48: "Foggy 🌫️", 51: "Light Drizzle 🌧️", 53: "Drizzle 🌧️", 55: "Heavy Drizzle 🌧️", 61: "Light Rain ☔", 63: "Rain ☔", 65: "Heavy Rain ☔", 71: "Light Snow 🌨️", 73: "Snow 🌨️", 75: "Heavy Snow 🌨️", 95: "Thunderstorm ⛈️", 96: "Thunderstorm ⛈️", 99: "Thunderstorm ⛈️"}
+        return curr_temp, w_map.get(w_code, "Cloudy ☁️"), max_temp, min_temp
     except Exception:
-        # Failsafe if offline
         return 18, "Cloudy ☁️", 20, 5
 
 def get_smart_status(row):
@@ -271,7 +282,6 @@ global_df = load_data(SHEET_URL)
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
     
-    # Grab the live weather!
     curr_t, w_desc, high_t, low_t = get_live_weather()
     
     st.markdown(f"""
@@ -413,8 +423,26 @@ def render_main_dashboard():
                 
                 st.altair_chart(heatmap, use_container_width=True)
 
+                # --- NEW: HARDWARE DETAILS SECTION ---
                 st.divider()
-                st.markdown("#### ⚙️ REMOTE DEVICE MANAGEMENT")
+                st.markdown("#### ⚙️ HARDWARE DETAILS & MANAGEMENT")
+                
+                # Fetch live data from Neat Pulse API
+                fw_ver, app_ver = get_neat_device_info(selected_room)
+                
+                st.markdown(f"""
+                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                    <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); padding: 15px 25px; border-radius: 10px; border-left: 4px solid #00e5ff; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 700; letter-spacing: 1px;">NEAT OS FIRMWARE</p>
+                        <h4 style="margin:5px 0 0 0; color: white; font-size: 1.4rem;">{fw_ver}</h4>
+                    </div>
+                    <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); padding: 15px 25px; border-radius: 10px; border-left: 4px solid #e040fb; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 700; letter-spacing: 1px;">ACTIVE APP VERSION</p>
+                        <h4 style="margin:5px 0 0 0; color: white; font-size: 1.4rem;">{app_ver}</h4>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
                 st.caption(f"Execute live management commands on the Neat hardware located in **{selected_room}**.")
                 c_btn1, c_btn2, c_btn3 = st.columns(3)
                 with c_btn1:
