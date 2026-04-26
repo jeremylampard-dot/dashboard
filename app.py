@@ -119,7 +119,7 @@ ENDPOINT_MAP = {
     "Harris": "6e0f6d6b-97a5-4c2d-8c8d-286e71ea02cc"
 }
 
-@st.cache_data(ttl=300) # Cache for 5 mins so Kiosk mode doesn't burn API limits
+@st.cache_data(ttl=300) 
 def get_neat_device_info(room_name):
     """Fetches live Firmware and App Version from the Neat Pulse API."""
     endpoint_id = ENDPOINT_MAP.get(room_name)
@@ -134,13 +134,11 @@ def get_neat_device_info(room_name):
         response.raise_for_status()
         data = response.json()
         
-        # Pulling version data (Using common fallbacks if exact keys vary)
-        fw = data.get('osVersion', data.get('firmwareVersion', 'N/A'))
-        app = data.get('appVersion', data.get('softwareVersion', 'N/A'))
+        # 🛑 DEBUG MODE: Spit out the raw data so we can see the exact dictionary keys
+        return str(data), "Debug Mode"
         
-        return fw, app
-    except Exception:
-        return "Offline", "Offline"
+    except Exception as e:
+        return f"Error: {str(e)}", "Offline"
 
 def send_pulse_reboot(room_name):
     endpoint_id = ENDPOINT_MAP.get(room_name)
@@ -423,11 +421,9 @@ def render_main_dashboard():
                 
                 st.altair_chart(heatmap, use_container_width=True)
 
-                # --- NEW: HARDWARE DETAILS SECTION ---
                 st.divider()
                 st.markdown("#### ⚙️ HARDWARE DETAILS & MANAGEMENT")
                 
-                # Fetch live data from Neat Pulse API
                 fw_ver, app_ver = get_neat_device_info(selected_room)
                 
                 st.markdown(f"""
@@ -437,7 +433,7 @@ def render_main_dashboard():
                         <h4 style="margin:5px 0 0 0; color: white; font-size: 1.4rem;">{fw_ver}</h4>
                     </div>
                     <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); padding: 15px 25px; border-radius: 10px; border-left: 4px solid #e040fb; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 700; letter-spacing: 1px;">ACTIVE APP VERSION</p>
+                        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 700; letter-spacing: 1px;">RAW API DATA / ACTIVE APP</p>
                         <h4 style="margin:5px 0 0 0; color: white; font-size: 1.4rem;">{app_ver}</h4>
                     </div>
                 </div>
