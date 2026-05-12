@@ -219,4 +219,128 @@ def render_fleet_table(df):
     html += ".badge-use { background: rgba(255, 75, 75, 0.2); color: #ff4b4b; border: 1px solid rgba(255, 75, 75, 0.4); }"
     html += ".metric-val { font-weight: 900; font-size: 1.4rem; }"
     html += ".metric-unit { font-size: 0.9rem; color: #a0a5b5; font-weight: 500; margin-left: 4px; }"
-    html += "</
+    html += "</style>"
+    html += "<table class='fleet-table'><thead><tr>"
+    html += "<th class='fleet-th'>Room</th><th class='fleet-th'>Status</th><th class='fleet-th'>Temp</th>"
+    html += "<th class='fleet-th' style='width: 25%;'>Humidity</th><th class='fleet-th'>VOC</th>"
+    html += "<th class='fleet-th'>Light</th><th class='fleet-th'>Occupancy</th></tr></thead><tbody>"
+    
+    for _, row in df.iterrows():
+        room = row['Room']
+        status = row['Live Status']
+        if "AVAILABLE" in status: badge = f"<span class='badge badge-avail'>{status}</span>"
+        elif "OCCUPIED" in status: badge = f"<span class='badge badge-occ'>{status}</span>"
+        else: badge = f"<span class='badge badge-use'>{status}</span>"
+            
+        temp = f"<span class='metric-val'>{row['Temperature']:.1f}</span><span class='metric-unit'>°C</span>" if pd.notna(row['Temperature']) else "-"
+        hum_val = int(row['Humidity']) if pd.notna(row['Humidity']) else 0
+        hum_color = "#ffb300" if (hum_val < 30 or hum_val > 60) else "#7c4dff"
+        hum = f"<div style='display: flex; align-items: center; gap: 15px;'><div style='flex-grow: 1; background: rgba(255,255,255,0.1); height: 10px; border-radius: 5px; overflow: hidden;'><div style='width: {hum_val}%; background: {hum_color}; height: 100%; border-radius: 5px; box-shadow: 0 0 10px {hum_color}80;'></div></div><span style='font-weight: 900; font-size: 1.2rem; width: 50px;'>{hum_val}%</span></div>"
+        
+        voc = f"<span class='metric-val'>{row['VOC Index']:.0f}</span><span class='metric-unit'>idx</span>" if pd.notna(row['VOC Index']) else "-"
+        light = f"<span class='metric-val'>{row['Light']:.0f}</span><span class='metric-unit'>lx</span>" if pd.notna(row['Light']) else "-"
+        people = f"<span class='metric-val'>{int(row['People'])}</span><span class='metric-unit'>👥</span>" if pd.notna(row['People']) else "-"
+        
+        html += f"<tr class='fleet-tr'><td class='fleet-td'>{room}</td><td class='fleet-td'>{badge}</td><td class='fleet-td'>{temp}</td><td class='fleet-td'>{hum}</td><td class='fleet-td'>{voc}</td><td class='fleet-td'>{light}</td><td class='fleet-td'>{people}</td></tr>"
+        
+    html += "</tbody></table>"
+    return html
+
+def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_scale_zero=False):
+    base = alt.Chart(data).encode(
+        x=alt.X('Timestamp:T', title='', axis=alt.Axis(grid=False, labelColor='#a0a5b5', tickCount=5)),
+        y=alt.Y(f'{y_col}:Q', title=title, scale=alt.Scale(zero=y_scale_zero), axis=alt.Axis(gridColor='rgba(255,255,255,0.05)', labelColor='#a0a5b5')),
+        tooltip=[alt.Tooltip('Timestamp:T', format='%Y-%m-%d %H:%M', title='Time'), alt.Tooltip(f'{y_col}:Q', format='.1f', title=y_col)]
+    )
+    if chart_type == 'line': 
+        line = base.mark_line(color=color, strokeWidth=3)
+        area = base.mark_area(
+            opacity=0.3,
+            color=alt.Gradient(
+                gradient='linear',
+                stops=[alt.GradientStop(color=color, offset=0), alt.GradientStop(color='rgba(0,0,0,0)', offset=1)],
+                x1=1, x2=1, y1=1, y2=0
+            )
+        )
+        chart = (area + line).interactive()
+    else: 
+        chart = base.mark_area(color=color, opacity=0.8, interpolate='step-after').interactive()
+        
+    return chart.configure_view(strokeWidth=0).configure_axis(domain=False)
+
+global_df = load_data(SHEET_URL)
+
+# ==========================================
+# 4. STATIC SIDEBAR (COMMAND CENTER)
+# ==========================================
+with st.sidebar:
+    st.markdown("### ☁️ CITY OF LONDON")
+    
+    curr_t, w_desc, high_t, low_t = get_live_weather()
+    
+    st.markdown(f"""
+    <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px; box-shadow: 0 8px 32px 0 rgba(0,0,0,0.2);">
+        <h1 style="margin:0; font-size: 3rem; color: #ffffff;">{curr_t}°C</h1>
+        <p style="margin:0; font-weight: 700; color: #9c27b0; text-transform: uppercase; letter-spacing: 2px;">{w_desc}</p>
+        <hr style="border: 1px solid rgba(255,255,255,0.05); margin: 15px 0;">
+        <p style="margin:0; font-size: 0.8rem; color: #a0a5b5; font-weight: 500;">H: {high_t}°C | L: {low_t}°C</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not global_df.empty:
+        latest_sb = global_df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
+        
+        avg_t, avg_h, avg_v = latest_sb['Temperature'].mean(skipna=True), latest_sb['Humidity'].mean(skipna=True), latest_sb['VOC Index'].mean(skipna=True)
+        penalty = sum([abs(avg_t - 21) * 3 if pd.notna(avg_t) else 0, abs(avg_h - 45) * 0.5 if pd.notna(avg_h) else 0, (avg_v * 0.1) if pd.notna(avg_v) else 0])
+        comfort = max(0, min(100, int(100 - penalty)))
+        ring_color = "#9c27b0" if comfort >= 80 else ("#ffb300" if comfort >= 60 else "#ff4b4b")
+        
+        st.markdown("### 🔋 BUILDING COMFORT")
+        st.markdown(f"""
+        <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 25px;">
+            <div style="width: 130px; height: 130px; border-radius: 50%; background: conic-gradient({ring_color} {comfort}%, rgba(255,255,255,0.05) 0); display: flex; justify-content: center; align-items: center; box-shadow: 0 0 20px {ring_color}30;">
+                <div style="width: 100px; height: 100px; border-radius: 50%; background-color: #0e1117; display: flex; justify-content: center; align-items: center;"><h2 style="margin:0; font-size: 1.8rem; color: {ring_color};">{comfort}%</h2></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        today_df = global_df[global_df['Timestamp'] >= pd.Timestamp.now().normalize()]
+        if not today_df.empty and today_df['People'].sum() > 0:
+            st.markdown("### 🏆 TODAY'S MVP")
+            st.markdown(f"<div style='background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-left: 4px solid #00e5ff; border-radius: 10px; padding: 15px; margin-bottom: 25px;'><p style='margin:0; font-size: 0.75rem; color: #a0a5b5; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;'>Highest Traffic Space</p><h4 style='margin:5px 0 0 0; color: #ffffff; letter-spacing: 0.5px;'>{today_df.groupby('Room')['People'].sum().idxmax()}</h4></div>", unsafe_allow_html=True)
+
+        st.markdown("### 🚨 SYSTEM ALERTS")
+        alerts = [f"⚠️ <b>{row['Room']}:</b> High VOC" for _, row in latest_sb.iterrows() if pd.notna(row['VOC Index']) and row['VOC Index'] > 150]
+        alerts += [f"🔥 <b>{row['Room']}:</b> Too Hot" for _, row in latest_sb.iterrows() if pd.notna(row['Temperature']) and row['Temperature'] > 26]
+        
+        if not alerts: st.markdown("<div style='background: rgba(30, 58, 47, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(0, 230, 118, 0.3); border-radius: 10px; padding: 15px; text-align: center; margin-bottom: 20px;'><p style='margin:0; color: #00e676; font-weight: 700; letter-spacing: 1px;'>🟢 ALL SYSTEMS OPTIMAL</p></div>", unsafe_allow_html=True)
+        else:
+            for alert in alerts: st.markdown(f"<div style='background: rgba(74, 25, 25, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255, 75, 75, 0.3); border-left: 4px solid #ff4b4b; border-radius: 10px; padding: 12px; margin-bottom: 10px;'><p style='margin:0; color: #ffca28; font-size: 0.9rem;'>{alert}</p></div>", unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("### 🛠️ DASHBOARD CONTROL")
+    st.toggle("▶️ ENABLE AUTO-PILOT (Kiosk Mode)", key="autopilot")
+    if st.button("🔄 FORCE FULL REFRESH", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+# ==========================================
+# 5. DASHBOARD ENGINE 
+# ==========================================
+@st.fragment(run_every="2m")
+def render_main_dashboard():
+    st.title("🏢 Neat London Showroom")
+    df = load_data(SHEET_URL)
+    
+    if not df.empty:
+        tab1, tab2, tab3 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE", "🤖 AI ASSISTANT"])
+
+        with tab1:
+            latest = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room').copy()
+            latest['Live Status'] = latest.apply(get_smart_status, axis=1)
+            
+            total_people, rooms_available, avg_voc = int(latest['People'].sum(skipna=True)), int((latest['Live Status'] == "🟢 AVAILABLE").sum()), latest['VOC Index'].mean(skipna=True)
+            b_voc_color = "#ff4b4b" if avg_voc > 250 else ("#ffb300" if avg_voc > 150 else "#9c27b0")
+            
+            h1, h2, h3 = st.columns(3)
+            h1.markdown
