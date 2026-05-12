@@ -343,4 +343,143 @@ def render_main_dashboard():
             b_voc_color = "#ff4b4b" if avg_voc > 250 else ("#ffb300" if avg_voc > 150 else "#9c27b0")
             
             h1, h2, h3 = st.columns(3)
-            h1.markdown
+            h1.markdown(render_smart_card("TOTAL PEOPLE IN SHOWROOM", f"{total_people} 👥"), unsafe_allow_html=True)
+            h2.markdown(render_smart_card("ROOMS CURRENTLY AVAILABLE", f"{rooms_available} 🟢"), unsafe_allow_html=True)
+            h3.markdown(render_smart_card("BUILDING AIR QUALITY (VOC)", f"{avg_voc:.0f} 🌬️", b_voc_color), unsafe_allow_html=True)
+            
+            st.divider()
+            st.subheader("LIVE FLEET STATUS")
+            st.markdown(render_fleet_table(latest), unsafe_allow_html=True)
+
+        with tab2:
+            all_rooms = sorted(df['Room'].unique())
+            if st.session_state.kiosk_idx >= len(all_rooms): st.session_state.kiosk_idx = 0
+
+            c_room, c_date, c_grain = st.columns([1.5, 2, 1])
+            with c_room: selected_room = st.selectbox("CHOOSE A ROOM:", all_rooms, index=st.session_state.kiosk_idx if st.session_state.autopilot else 0, disabled=st.session_state.autopilot)
+            with c_date: date_range = st.date_input("SELECT DATE RANGE:", [datetime.now().date() - timedelta(days=7), datetime.now().date()])
+            with c_grain: grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg"])
+
+            f_df = df[df['Room'] == selected_room].copy()
+            if len(date_range) == 2:
+                start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) + timedelta(days=1)
+                f_df = f_df[(f_df['Timestamp'] >= start) & (f_df['Timestamp'] < end)]
+            
+            if not f_df.empty:
+                f_df = f_df.set_index("Timestamp")
+                rule = {"Minutes (Raw)": None, "Hourly Avg": "h", "Daily Avg": "D"}[grain]
+                resampled = f_df.resample(rule).mean(numeric_only=True) if rule else f_df
+                env_chart_df = resampled.reset_index()
+                
+                latest_val = f_df.iloc[-1]
+                v_voc, v_tmp, v_hum = latest_val['VOC Index'], latest_val['Temperature'], latest_val['Humidity']
+                voc_col, tmp_col, hum_col = ("#ff4b4b" if v_voc > 250 else ("#ffb300" if v_voc > 150 else "#9c27b0")), ("#ff4b4b" if v_tmp > 26 else ("#00e5ff" if v_tmp < 16 else "#9c27b0")), ("#ffb300" if (v_hum < 30 or v_hum > 60) else "#9c27b0")
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.markdown(render_smart_card("LATEST TEMP", f"{v_tmp:.1f}°C", tmp_col), unsafe_allow_html=True)
+                m2.markdown(render_smart_card("LATEST HUMIDITY", f"{v_hum:.0f}%", hum_col), unsafe_allow_html=True)
+                m3.markdown(render_smart_card("LATEST VOC", f"{v_voc:.0f}", voc_col), unsafe_allow_html=True)
+                m4.markdown(render_smart_card("LATEST LIGHT", f"{latest_val['Light']:.0f} lx"), unsafe_allow_html=True)
+                
+                st.divider()
+                st.markdown("#### 👥 OCCUPANCY HISTORY")
+                occ_chart = create_interactive_chart((f_df["People"].resample(rule).max() if rule else f_df["People"]).reset_index(), 'People', '#aa00ff', 'bar', 'Max People', y_scale_zero=True)
+                st.altair_chart(occ_chart.properties(height=180), use_container_width=True)
+                
+                st.divider()
+                r1_1, r1_2 = st.columns(2)
+                with r1_1:
+                    st.markdown("#### TEMPERATURE (°C)")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
+                with r1_2:
+                    st.markdown("#### HUMIDITY (%)")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
+
+                r2_1, r2_2 = st.columns(2)
+                with r2_1:
+                    st.markdown("#### AIR QUALITY (VOC)")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), use_container_width=True)
+                with r2_2:
+                    st.markdown("#### LIGHT LEVELS (LUX)")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), use_container_width=True)
+
+                st.divider()
+                st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
+                h_data = f_df.copy().reset_index()
+                h_data['Hour'], h_data['Day'] = h_data['Timestamp'].dt.hour, h_data['Timestamp'].dt.day_name()
+                
+                heatmap = alt.Chart(h_data).mark_rect().encode(
+                    x=alt.X('Hour:O', title='Hour of Day', axis=alt.Axis(grid=False, labelColor='#a0a5b5')),
+                    y=alt.Y('Day:O', title='', sort=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], axis=alt.Axis(grid=False, labelColor='#a0a5b5')),
+                    color=alt.Color('max(People):Q', scale=alt.Scale(scheme='purples')),
+                    tooltip=['Day', 'Hour', 'max(People)']
+                ).properties(height=280).configure_view(strokeWidth=0)
+                
+                st.altair_chart(heatmap, use_container_width=True)
+
+            else: st.warning("Select a valid date range to see room data.")
+
+        with tab3:
+            st.markdown("### 💬 Chat with the Showroom")
+            st.caption("Ask me about room utilization, air quality, or live availability.")
+            
+            if "messages" not in st.session_state:
+                st.session_state.messages = [
+                    {"role": "assistant", "content": "Hello! I am your Neat Showroom Assistant. Ask me things like: \n* *'Which is the most utilized room?'*\n* *'What rooms are available right now?'*\n* *'Which room has the worst air quality?'*"}
+                ]
+
+            for msg in st.session_state.messages:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+
+            if prompt := st.chat_input("Ask a question about the showroom..."):
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                with st.chat_message("assistant"):
+                    response = ""
+                    query = prompt.lower()
+                    
+                    current_status_df = df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
+                    current_status_df['Live Status'] = current_status_df.apply(get_smart_status, axis=1)
+
+                    if "utiliz" in query or "busiest" in query or "popular" in query:
+                        pop_room = df.groupby('Room')['People'].sum().idxmax()
+                        total_visits = int(df.groupby('Room')['People'].sum().max())
+                        response = f"Based on historical data, **{pop_room}** is your most utilized space, with a total detected occupancy count of {total_visits} across all logs."
+                    
+                    elif "available" in query or "free" in query or "empty" in query:
+                        free_rooms = current_status_df[current_status_df['Live Status'] == "🟢 AVAILABLE"]['Room'].tolist()
+                        if free_rooms:
+                            response = f"Right now, there are {len(free_rooms)} rooms available: **{', '.join(free_rooms)}**."
+                        else:
+                            response = "It's a full house! All rooms are currently occupied or in use."
+
+                    elif "air" in query or "stuffy" in query or "voc" in query:
+                        worst_air = current_status_df.loc[current_status_df['VOC Index'].idxmax()]
+                        if worst_air['VOC Index'] > 150:
+                            response = f"The air quality in **{worst_air['Room']}** is currently dropping. The VOC index is at {worst_air['VOC Index']:.0f}. You might want to let some fresh air in!"
+                        else:
+                            response = f"Air quality looks great across the board. The highest VOC level right now is just {worst_air['VOC Index']:.0f} in {worst_air['Room']}."
+                    
+                    elif "hot" in query or "warm" in query or "temperature" in query:
+                        hottest = current_status_df.loc[current_status_df['Temperature'].idxmax()]
+                        response = f"The warmest room right now is **{hottest['Room']}** at {hottest['Temperature']:.1f}°C."
+
+                    else:
+                        response = "I'm still learning! Try asking me about **availability**, **utilization**, or **air quality**."
+
+                    st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+
+render_main_dashboard()
+
+# ==========================================
+# 6. AUTO-PILOT / KIOSK LOOP ENGINE
+# ==========================================
+if st.session_state.get('autopilot', False):
+    time.sleep(10)
+    all_rms = sorted(global_df['Room'].unique()) if not global_df.empty else []
+    if all_rms: st.session_state.kiosk_idx = (st.session_state.kiosk_idx + 1) % len(all_rms)
+    st.rerun()
