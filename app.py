@@ -310,7 +310,8 @@ with st.sidebar:
             st.markdown(f"<div style='background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-left: 4px solid #00e5ff; border-radius: 10px; padding: 15px; margin-bottom: 25px;'><p style='margin:0; font-size: 0.75rem; color: #a0a5b5; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;'>Highest Traffic Space</p><h4 style='margin:5px 0 0 0; color: #ffffff; letter-spacing: 0.5px;'>{today_df.groupby('Room')['People'].sum().idxmax()}</h4></div>", unsafe_allow_html=True)
 
         st.markdown("### 🚨 SYSTEM ALERTS")
-        alerts = [f"⚠️ <b>{row['Room']}:</b> High VOC" for _, row in latest_sb.iterrows() if pd.notna(row['VOC Index']) and row['VOC Index'] > 150]
+        # THRESHOLD INCREASED TO 200 FOR ALERTS
+        alerts = [f"⚠️ <b>{row['Room']}:</b> High VOC" for _, row in latest_sb.iterrows() if pd.notna(row['VOC Index']) and row['VOC Index'] > 200]
         alerts += [f"🔥 <b>{row['Room']}:</b> Too Hot" for _, row in latest_sb.iterrows() if pd.notna(row['Temperature']) and row['Temperature'] > 26]
         
         if not alerts: st.markdown("<div style='background: rgba(30, 58, 47, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(0, 230, 118, 0.3); border-radius: 10px; padding: 15px; text-align: center; margin-bottom: 20px;'><p style='margin:0; color: #00e676; font-weight: 700; letter-spacing: 1px;'>🟢 ALL SYSTEMS OPTIMAL</p></div>", unsafe_allow_html=True)
@@ -458,7 +459,8 @@ def render_main_dashboard():
 
                     elif "air" in query or "stuffy" in query or "voc" in query:
                         worst_air = current_status_df.loc[current_status_df['VOC Index'].idxmax()]
-                        if worst_air['VOC Index'] > 150:
+                        # THRESHOLD INCREASED TO 200 IN CHATBOT
+                        if worst_air['VOC Index'] > 200:
                             response = f"The air quality in **{worst_air['Room']}** is currently dropping. The VOC index is at {worst_air['VOC Index']:.0f}. You might want to let some fresh air in!"
                         else:
                             response = f"Air quality looks great across the board. The highest VOC level right now is just {worst_air['VOC Index']:.0f} in {worst_air['Room']}."
