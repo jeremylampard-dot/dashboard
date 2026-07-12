@@ -148,7 +148,8 @@ def apply_neat_config(room_name, config_payload):
 # ==========================================
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
-@st.cache_data(ttl=60)
+# FIX: Swapped to cache_resource to bypass PyArrow Pandas 3.0 Segfaults
+@st.cache_resource(ttl=60)
 def load_data(url):
     df = pd.read_csv(url, skipinitialspace=True)
     if len(df.columns) >= 8: df.columns = ["Timestamp", "Room", "Temperature", "Humidity", "People", "VOC Index", "Light", "Status"]
@@ -251,7 +252,8 @@ def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_
         
     return chart.configure_view(strokeWidth=0).configure_axis(domain=False)
 
-global_df = load_data(SHEET_URL)
+# Safe fetching: copy the dataframe so it stays stable
+global_df = load_data(SHEET_URL).copy()
 
 # ==========================================
 # 4. STATIC SIDEBAR (COMMAND CENTER)
@@ -303,8 +305,10 @@ with st.sidebar:
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
     st.toggle("▶️ ENABLE AUTO-PILOT (Kiosk Mode)", key="autopilot")
+    # FIX: Updated width kwarg to silence logs
     if st.button("🔄 FORCE FULL REFRESH", width="stretch"):
         st.cache_data.clear()
+        st.cache_resource.clear()
         st.rerun()
 
 # ==========================================
@@ -312,7 +316,8 @@ with st.sidebar:
 # ==========================================
 def render_main_dashboard():
     st.title("🏢 Neat London Showroom")
-    df = load_data(SHEET_URL)
+    # Safe reference
+    df = global_df
     
     if not df.empty:
         tab1, tab2, tab3 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE", "🤖 AI ASSISTANT"])
@@ -366,24 +371,24 @@ def render_main_dashboard():
                 st.divider()
                 st.markdown("#### 👥 OCCUPANCY HISTORY")
                 occ_chart = create_interactive_chart((f_df["People"].resample(rule).max() if rule else f_df["People"]).reset_index(), 'People', '#aa00ff', 'bar', 'Max People', y_scale_zero=True)
-                st.altair_chart(occ_chart.properties(height=180), width="stretch")
+                st.altair_chart(occ_chart.properties(height=180), use_container_width=True)
                 
                 st.divider()
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     st.markdown("#### TEMPERATURE (°C)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
                 with r1_2:
                     st.markdown("#### HUMIDITY (%)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
 
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     st.markdown("#### AIR QUALITY (VOC)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), use_container_width=True)
                 with r2_2:
                     st.markdown("#### LIGHT LEVELS (LUX)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), use_container_width=True)
 
                 st.divider()
                 st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
@@ -397,7 +402,7 @@ def render_main_dashboard():
                     tooltip=['Day', 'Hour', 'max(People)']
                 ).properties(height=280).configure_view(strokeWidth=0)
                 
-                st.altair_chart(heatmap, width="stretch")
+                st.altair_chart(heatmap, use_container_width=True)
 
             else: st.warning("Select a valid date range to see room data.")
 
