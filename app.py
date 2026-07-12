@@ -1,3 +1,7 @@
+import os
+# NUKE THE SEGFAULT: Forces Streamlit to bypass the unstable PyArrow engine entirely
+os.environ["STREAMLIT_DATA_FRAME_SERIALIZATION"] = "legacy"
+
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -148,7 +152,8 @@ def apply_neat_config(room_name, config_payload):
 # ==========================================
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
-@st.cache_resource(ttl=60)
+# FIX: Thread-safe caching mechanism restored
+@st.cache_data(ttl=60)
 def load_data(url):
     df = pd.read_csv(url, skipinitialspace=True)
     if len(df.columns) >= 8: df.columns = ["Timestamp", "Room", "Temperature", "Humidity", "People", "VOC Index", "Light", "Status"]
@@ -251,7 +256,7 @@ def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_
         
     return chart.configure_view(strokeWidth=0).configure_axis(domain=False)
 
-global_df = load_data(SHEET_URL).copy()
+global_df = load_data(SHEET_URL)
 
 # ==========================================
 # 4. STATIC SIDEBAR (COMMAND CENTER)
@@ -305,7 +310,6 @@ with st.sidebar:
     st.toggle("▶️ ENABLE AUTO-PILOT (Kiosk Mode)", key="autopilot")
     if st.button("🔄 FORCE FULL REFRESH", width="stretch"):
         st.cache_data.clear()
-        st.cache_resource.clear()
         st.rerun()
 
 # ==========================================
