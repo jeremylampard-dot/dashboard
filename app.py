@@ -1,12 +1,7 @@
-import os
-# NUKE THE SEGFAULT: Forces Streamlit to bypass the unstable PyArrow engine entirely
-os.environ["STREAMLIT_DATA_FRAME_SERIALIZATION"] = "legacy"
-
 import streamlit as st
 import pandas as pd
 import altair as alt
 import requests
-import time
 from datetime import datetime, timedelta
 
 # --- Page Config ---
@@ -152,7 +147,6 @@ def apply_neat_config(room_name, config_payload):
 # ==========================================
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vStJLmBoSixXlVRZCSExoE_gW3ntLFo8wa9Ip7dm4z8Yt6iRMTsRYG2mohx_3kFTeMAPxoHiczrx9Ly/pub?gid=0&single=true&output=csv"
 
-# FIX: Thread-safe caching mechanism restored
 @st.cache_data(ttl=60)
 def load_data(url):
     df = pd.read_csv(url, skipinitialspace=True)
@@ -256,16 +250,12 @@ def create_interactive_chart(data, y_col, color, chart_type='line', title='', y_
         
     return chart.configure_view(strokeWidth=0).configure_axis(domain=False)
 
-global_df = load_data(SHEET_URL)
-
 # ==========================================
 # 4. STATIC SIDEBAR (COMMAND CENTER)
 # ==========================================
 with st.sidebar:
     st.markdown("### ☁️ CITY OF LONDON")
-    
     curr_t, w_desc, high_t, low_t = get_live_weather()
-    
     st.markdown(f"""
     <div style="background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px; box-shadow: 0 8px 32px 0 rgba(0,0,0,0.2);">
         <h1 style="margin:0; font-size: 3rem; color: #ffffff;">{curr_t}°C</h1>
@@ -275,9 +265,9 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
+    global_df = load_data(SHEET_URL)
     if not global_df.empty:
         latest_sb = global_df.sort_values('Timestamp', ascending=False).drop_duplicates('Room')
-        
         avg_t, avg_h, avg_v = latest_sb['Temperature'].mean(skipna=True), latest_sb['Humidity'].mean(skipna=True), latest_sb['VOC Index'].mean(skipna=True)
         penalty = sum([abs(avg_t - 21) * 3 if pd.notna(avg_t) else 0, abs(avg_h - 45) * 0.5 if pd.notna(avg_h) else 0, (avg_v * 0.1) if pd.notna(avg_v) else 0])
         comfort = max(0, min(100, int(100 - penalty)))
@@ -308,16 +298,16 @@ with st.sidebar:
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
     st.toggle("▶️ ENABLE AUTO-PILOT (Kiosk Mode)", key="autopilot")
-    if st.button("🔄 FORCE FULL REFRESH", width="stretch"):
+    if st.button("🔄 FORCE FULL REFRESH", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
 # ==========================================
-# 5. DASHBOARD ENGINE 
+# 5. CORE DASHBOARD ENGINE (NO SLEEP LOOPS)
 # ==========================================
-def render_main_dashboard():
+def _internal_render_dashboard():
     st.title("🏢 Neat London Showroom")
-    df = global_df
+    df = load_data(SHEET_URL)
     
     if not df.empty:
         tab1, tab2, tab3 = st.tabs(["🌐 FLEET OVERVIEW", "🔍 ROOM DEEP DIVE", "🤖 AI ASSISTANT"])
@@ -343,7 +333,7 @@ def render_main_dashboard():
             if st.session_state.kiosk_idx >= len(all_rooms): st.session_state.kiosk_idx = 0
 
             c_room, c_date, c_grain = st.columns([1.5, 2, 1])
-            with c_room: selected_room = st.selectbox("CHOOSE A ROOM:", all_rooms, index=st.session_state.kiosk_idx if st.session_state.autopilot else 0, disabled=st.session_state.autopilot)
+            with c_room: selected_room = st.selectbox("CHOOSE A ROOM:", all_rooms, index=st.session_state.kiosk_idx, disabled=st.session_state.get('autopilot', False))
             with c_date: date_range = st.date_input("SELECT DATE RANGE:", [datetime.now().date() - timedelta(days=7), datetime.now().date()])
             with c_grain: grain = st.selectbox("TIME RESOLUTION:", ["Minutes (Raw)", "Hourly Avg", "Daily Avg"])
 
@@ -371,24 +361,24 @@ def render_main_dashboard():
                 st.divider()
                 st.markdown("#### 👥 OCCUPANCY HISTORY")
                 occ_chart = create_interactive_chart((f_df["People"].resample(rule).max() if rule else f_df["People"]).reset_index(), 'People', '#aa00ff', 'bar', 'Max People', y_scale_zero=True)
-                st.altair_chart(occ_chart.properties(height=180), width="stretch")
+                st.altair_chart(occ_chart.properties(height=180), use_container_width=True)
                 
                 st.divider()
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     st.markdown("#### TEMPERATURE (°C)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
                 with r1_2:
                     st.markdown("#### HUMIDITY (%)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
 
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     st.markdown("#### AIR QUALITY (VOC)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), use_container_width=True)
                 with r2_2:
                     st.markdown("#### LIGHT LEVELS (LUX)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), width="stretch")
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), use_container_width=True)
 
                 st.divider()
                 st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
@@ -402,7 +392,7 @@ def render_main_dashboard():
                     tooltip=['Day', 'Hour', 'max(People)']
                 ).properties(height=280).configure_view(strokeWidth=0)
                 
-                st.altair_chart(heatmap, width="stretch")
+                st.altair_chart(heatmap, use_container_width=True)
 
             else: st.warning("Select a valid date range to see room data.")
 
@@ -460,13 +450,23 @@ def render_main_dashboard():
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response})
 
-render_main_dashboard()
 
 # ==========================================
-# 6. AUTO-PILOT / KIOSK LOOP ENGINE
+# 6. NON-BLOCKING AUTO-PILOT HANDLER
 # ==========================================
+# This registers the auto-update loop in the frontend browser, 
+# NEVER freezing the server thread, entirely eliminating the Segfaults!
+
+@st.fragment(run_every="10s")
+def run_kiosk_mode():
+    df = load_data(SHEET_URL)
+    all_rooms = sorted(df['Room'].unique()) if not df.empty else []
+    if all_rooms:
+        st.session_state.kiosk_idx = (st.session_state.kiosk_idx + 1) % len(all_rooms)
+    _internal_render_dashboard()
+
+# Trigger Logic
 if st.session_state.get('autopilot', False):
-    all_rms = sorted(global_df['Room'].unique()) if not global_df.empty else []
-    if all_rms: st.session_state.kiosk_idx = (st.session_state.kiosk_idx + 1) % len(all_rms)
-    time.sleep(10)
-    st.rerun()
+    run_kiosk_mode()
+else:
+    _internal_render_dashboard()
