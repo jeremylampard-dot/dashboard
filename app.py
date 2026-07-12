@@ -119,23 +119,6 @@ ENDPOINT_MAP = {
     "Harris": "6e0f6d6b-97a5-4c2d-8c8d-286e71ea02cc"
 }
 
-@st.cache_data(ttl=300) 
-def get_neat_raw_data(room_name):
-    """Fetches the raw JSON payload from the Neat Pulse API."""
-    endpoint_id = ENDPOINT_MAP.get(room_name)
-    if not endpoint_id or endpoint_id == "paste-endpoint-id-here": 
-        return {"Status": "Error", "Message": f"No valid Endpoint ID mapped for '{room_name}' in the script."}
-        
-    api_url = f"https://api.pulse.neat.no/v1/orgs/{PULSE_ORG_ID}/endpoints/{endpoint_id}"
-    headers = {"Authorization": f"Bearer {PULSE_API_KEY}", "Accept": "application/json"}
-    
-    try:
-        response = requests.get(api_url, headers=headers, timeout=5)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        return {"Status": "Offline / Error", "Details": str(e)}
-
 def send_pulse_reboot(room_name):
     endpoint_id = ENDPOINT_MAP.get(room_name)
     if not endpoint_id: return False, f"Setup Error: No Endpoint ID mapped for '{room_name}'."
@@ -310,7 +293,6 @@ with st.sidebar:
             st.markdown(f"<div style='background: rgba(45, 48, 58, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-left: 4px solid #00e5ff; border-radius: 10px; padding: 15px; margin-bottom: 25px;'><p style='margin:0; font-size: 0.75rem; color: #a0a5b5; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;'>Highest Traffic Space</p><h4 style='margin:5px 0 0 0; color: #ffffff; letter-spacing: 0.5px;'>{today_df.groupby('Room')['People'].sum().idxmax()}</h4></div>", unsafe_allow_html=True)
 
         st.markdown("### 🚨 SYSTEM ALERTS")
-        # THRESHOLD INCREASED TO 250 FOR ALERTS
         alerts = [f"⚠️ <b>{row['Room']}:</b> High VOC" for _, row in latest_sb.iterrows() if pd.notna(row['VOC Index']) and row['VOC Index'] > 250]
         alerts += [f"🔥 <b>{row['Room']}:</b> Too Hot" for _, row in latest_sb.iterrows() if pd.notna(row['Temperature']) and row['Temperature'] > 26]
         
@@ -321,14 +303,13 @@ with st.sidebar:
     st.divider()
     st.markdown("### 🛠️ DASHBOARD CONTROL")
     st.toggle("▶️ ENABLE AUTO-PILOT (Kiosk Mode)", key="autopilot")
-    if st.button("🔄 FORCE FULL REFRESH", use_container_width=True):
+    if st.button("🔄 FORCE FULL REFRESH", width="stretch"):
         st.cache_data.clear()
         st.rerun()
 
 # ==========================================
 # 5. DASHBOARD ENGINE 
 # ==========================================
-@st.fragment(run_every="2m")
 def render_main_dashboard():
     st.title("🏢 Neat London Showroom")
     df = load_data(SHEET_URL)
@@ -385,24 +366,24 @@ def render_main_dashboard():
                 st.divider()
                 st.markdown("#### 👥 OCCUPANCY HISTORY")
                 occ_chart = create_interactive_chart((f_df["People"].resample(rule).max() if rule else f_df["People"]).reset_index(), 'People', '#aa00ff', 'bar', 'Max People', y_scale_zero=True)
-                st.altair_chart(occ_chart.properties(height=180), use_container_width=True)
+                st.altair_chart(occ_chart.properties(height=180), width="stretch")
                 
                 st.divider()
                 r1_1, r1_2 = st.columns(2)
                 with r1_1:
                     st.markdown("#### TEMPERATURE (°C)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Temperature', '#b388ff', 'line', '', y_scale_zero=False).properties(height=220), width="stretch")
                 with r1_2:
                     st.markdown("#### HUMIDITY (%)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), use_container_width=True)
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Humidity', '#7c4dff', 'line', '', y_scale_zero=False).properties(height=220), width="stretch")
 
                 r2_1, r2_2 = st.columns(2)
                 with r2_1:
                     st.markdown("#### AIR QUALITY (VOC)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), use_container_width=True)
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'VOC Index', '#651fff', 'line', '', y_scale_zero=True).properties(height=220), width="stretch")
                 with r2_2:
                     st.markdown("#### LIGHT LEVELS (LUX)")
-                    st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), use_container_width=True)
+                    st.altair_chart(create_interactive_chart(env_chart_df, 'Light', '#e040fb', 'bar', '', y_scale_zero=True).properties(height=220), width="stretch")
 
                 st.divider()
                 st.markdown("#### 📅 PEAK UTILIZATION HEATMAP")
@@ -416,7 +397,7 @@ def render_main_dashboard():
                     tooltip=['Day', 'Hour', 'max(People)']
                 ).properties(height=280).configure_view(strokeWidth=0)
                 
-                st.altair_chart(heatmap, use_container_width=True)
+                st.altair_chart(heatmap, width="stretch")
 
             else: st.warning("Select a valid date range to see room data.")
 
@@ -459,7 +440,6 @@ def render_main_dashboard():
 
                     elif "air" in query or "stuffy" in query or "voc" in query:
                         worst_air = current_status_df.loc[current_status_df['VOC Index'].idxmax()]
-                        # THRESHOLD INCREASED TO 250 IN CHATBOT
                         if worst_air['VOC Index'] > 250:
                             response = f"The air quality in **{worst_air['Room']}** is currently dropping. The VOC index is at {worst_air['VOC Index']:.0f}. You might want to let some fresh air in!"
                         else:
@@ -481,7 +461,7 @@ render_main_dashboard()
 # 6. AUTO-PILOT / KIOSK LOOP ENGINE
 # ==========================================
 if st.session_state.get('autopilot', False):
-    time.sleep(10)
     all_rms = sorted(global_df['Room'].unique()) if not global_df.empty else []
     if all_rms: st.session_state.kiosk_idx = (st.session_state.kiosk_idx + 1) % len(all_rms)
+    time.sleep(10)
     st.rerun()
